@@ -89,5 +89,12 @@
 #endif
 
 // clang-format off
+#if defined( __GNUC__ ) && !defined( __clang__ )
+// GCC keeps the whitespace that clang-format puts inside the call's parentheses when it macro-expands an #include
+// operand, producing "../stub/ Tr2CapsALStub.h". Stringizing only the file name avoids it (leading whitespace is not
+// stringized); trinityal/CMakeLists.txt puts the platform directory on the include path instead.
+#define TRINITY_AL_PLATFORM_INCLUDE( className ) CCP_STRINGIZE(CCP_CONCATENATE( className, TRINITY_PLATFORM_SYMBOL_SUFFIX ).h )
+#else
 #define TRINITY_AL_PLATFORM_INCLUDE( className ) CCP_STRINGIZE(../TRINITY_PLATFORM_SYMBOL/CCP_CONCATENATE( className, TRINITY_PLATFORM_SYMBOL_SUFFIX ).h )
+#endif
 // clang-format on

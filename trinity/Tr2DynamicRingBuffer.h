@@ -10,7 +10,7 @@
 //   dynamic data needs to be passed multiple times per frame for rendering and is
 //   discared right after rendering. With a ring buffer we can avoid excessive discard
 //   locks one would need for use. The basic patter of using this class is:
-//   1. collect data for the buffer>\
+//   1. collect data for the buffer>
 //   2. call ringBuffer.PutData to put data into the buffer
 //   3. draw primitives using the ring buffer
 //   4. call ringBuffer.DoneUsingData once the data is no longer needed

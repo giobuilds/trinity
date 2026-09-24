@@ -34,41 +34,41 @@ else()
 endif()
 
 set(PUBLIC_HEADER_FILES
-    Include/ITr2AnimationUpdater.h
-    Include/ITr2BoundingBox.h
-    Include/ITr2DebugRenderer.h
-    Include/ITr2GpuBuffer.h
-    Include/ITr2InstanceData.h
-    Include/ITr2Interior.h
-    Include/ITr2MultiPassScene.h
-    Include/ITr2Scene.h
-    Include/ITr2Updateable.h
-    Include/ITr2ValueBinding.h
-    Include/ITriColor.h
-    Include/ITriDevice.h
-    Include/ITriDuration.h
-    Include/ITriEffectParameter.h
-    Include/ITriMatrix.h
-    Include/ITriQuaternion.h
-    Include/ITriTargetable.h
-    Include/ITriTextureRes.h
-    Include/ITriVector.h
-    Include/Point.h
-    Include/Rect.h
-    Include/Tr2Curve.h
-    Include/Tr2WindowHandle.h
-    Include/TriColor.h
-    Include/TriMath.h
-    Include/TriMath.h
-    Include/TriQuaternion.h
-    Include/TriVector.h
+    include/ITr2AnimationUpdater.h
+    include/ITr2BoundingBox.h
+    include/ITr2DebugRenderer.h
+    include/ITr2GpuBuffer.h
+    include/ITr2InstanceData.h
+    include/ITr2Interior.h
+    include/ITr2MultiPassScene.h
+    include/ITr2Scene.h
+    include/ITr2Updateable.h
+    include/ITr2ValueBinding.h
+    include/ITriColor.h
+    include/ITriDevice.h
+    include/ITriDuration.h
+    include/ITriEffectParameter.h
+    include/ITriMatrix.h
+    include/ITriQuaternion.h
+    include/ITriTargetable.h
+    include/ITriTextureRes.h
+    include/ITriVector.h
+    include/Point.h
+    include/Rect.h
+    include/Tr2Curve.h
+    include/Tr2WindowHandle.h
+    include/TriColor.h
+    include/TriMath.h
+    include/TriMath.h
+    include/TriQuaternion.h
+    include/TriVector.h
 )
 
 if(BUILD_FOR_PYTHON_2)
     # This is only needed for py2 as the file now belongs in blue.
     # Unfortunatly the blue py2 branch cannot be updated at present due to security vulnerability work.
     # The file version in the older blue versions had diverged from this one is incompatible.
-    list(APPEND PUBLIC_HEADER_FILES Include/ITr2DebugRenderer2.h)
+    list(APPEND PUBLIC_HEADER_FILES include/ITr2DebugRenderer2.h)
 endif()
 
 set(_SOURCES
@@ -854,36 +854,36 @@ set(_SOURCES
     Font/Tr2FontMeasurer_Blue.cpp
     Font/Tr2SBit.cpp
     Font/Tr2SBit.h
-    Font/Tr2SBit_Blue.cpp
-    Include/ITr2AnimationUpdater.h
-    Include/ITr2BoundingBox.h
-    Include/ITr2DebugRenderer.h
-    Include/ITr2GpuBuffer.h
-    Include/ITr2InstanceData.h
-    Include/ITr2Interior.h
-    Include/ITr2MultiPassScene.h
-    Include/ITr2PoseModifier.h
-    Include/ITr2Scene.h
-    Include/ITr2Updateable.h
-    Include/ITr2ValueBinding.h
-    Include/ITriColor.h
-    Include/ITriDevice.h
-    Include/ITriDuration.h
-    Include/ITriEffectParameter.h
-    Include/ITriMatrix.h
-    Include/ITriQuaternion.h
-    Include/ITriTargetable.h
-    Include/ITriTextureRes.h
-    Include/ITriVector.h
-    Include/Point.h
-    Include/Rect.h
-    Include/Tr2Curve.h
-    Include/Tr2WindowHandle.h
-    Include/TriColor.h
-    Include/TriMath.h
-    Include/TriMath.h
-    Include/TriQuaternion.h
-    Include/TriVector.h
+    Font/Tr2Sbit_Blue.cpp
+    include/ITr2AnimationUpdater.h
+    include/ITr2BoundingBox.h
+    include/ITr2DebugRenderer.h
+    include/ITr2GpuBuffer.h
+    include/ITr2InstanceData.h
+    include/ITr2Interior.h
+    include/ITr2MultiPassScene.h
+    include/ITr2PoseModifier.h
+    include/ITr2Scene.h
+    include/ITr2Updateable.h
+    include/ITr2ValueBinding.h
+    include/ITriColor.h
+    include/ITriDevice.h
+    include/ITriDuration.h
+    include/ITriEffectParameter.h
+    include/ITriMatrix.h
+    include/ITriQuaternion.h
+    include/ITriTargetable.h
+    include/ITriTextureRes.h
+    include/ITriVector.h
+    include/Point.h
+    include/Rect.h
+    include/Tr2Curve.h
+    include/Tr2WindowHandle.h
+    include/TriColor.h
+    include/TriMath.h
+    include/TriMath.h
+    include/TriQuaternion.h
+    include/TriVector.h
     Interior/Tr2InteriorConstantBufferFormats.h
     Interior/Tr2InteriorLightSet.cpp
     Interior/Tr2InteriorLightSet.h
@@ -1394,6 +1394,7 @@ set(_SOURCES
     UI/Tr2MainWindow_Blue.cpp
     UI/Tr2MainWindow_MacOS.mm
     UI/Tr2MainWindow_Windows.cpp
+    UI/Tr2MainWindow_Linux.cpp
     UI/Tr2MouseCursor.cpp
     UI/Tr2MouseCursor.h
     UI/Tr2MouseCursor_Blue.cpp
@@ -1812,7 +1813,7 @@ if(BUILD_FOR_PYTHON_2)
     # This is only needed for py2 as the file now belongs in blue.
     # Unfortunatly the blue py2 branch cannot be updated at present due to security vulnerability work.
     # The file version in the older blue versions had diverged from this one is incompatible.
-    list(APPEND _SOURCES Include/ITr2DebugRenderer2.h)
+    list(APPEND _SOURCES include/ITr2DebugRenderer2.h)
 endif()
 
 set(GRANNY_RELATED_SOURCES
@@ -1833,6 +1834,15 @@ set(GRANNY_RELATED_SOURCES
 if(WITH_GRANNY)
     list(APPEND _SOURCES ${GRANNY_RELATED_SOURCES})
 endif()
+
+if(NOT APPLE)
+    # Every platform's sources are listed and guarded by TRINITY_PLATFORM checks. Objective-C++ files cannot be
+    # compiled off Apple (the Visual Studio generator skips them; Ninja + GCC would try to build them as ObjC++).
+    set(_OBJCXX_SOURCES ${_SOURCES})
+    list(FILTER _OBJCXX_SOURCES INCLUDE REGEX "\\.mm$")
+    set_source_files_properties(${_OBJCXX_SOURCES} PROPERTIES HEADER_FILE_ONLY TRUE)
+endif()
+
 
 
 # Ensure that we have a sane file grouping for XCode and VS project files
@@ -2001,7 +2011,7 @@ option(INSTALL_TO_MONOLITH "Install this package to a perforce branch vendor fol
 FIXME currently the _stub platform does not build on macOS due to "unknown type name: 'CGKeyCode'"
 There are probably more issues because we haven't build the stub project on macOS so far IIRC
 ]]
-if(WIN32)
+if(WIN32 OR CMAKE_SYSTEM_NAME STREQUAL "Linux")
     set(TRINITY_STUB_TARGET_NAME trinity_stub)
 
     ccp_add_library(${TRINITY_STUB_TARGET_NAME} SHARED)
@@ -2013,6 +2023,17 @@ if(WIN32)
 
     target_link_libraries(${TRINITY_STUB_TARGET_NAME} PRIVATE TrinityAL_stub)
     set_shared_trinity_properties(${TRINITY_STUB_TARGET_NAME})
+
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        # A Python extension module: _trinity_stub<flavor>.so, not lib_trinity_stub<flavor>.so.
+        set_target_properties(${TRINITY_STUB_TARGET_NAME}
+            PROPERTIES
+                PREFIX ""
+                SUFFIX ".so"
+                BUILD_WITH_INSTALL_RPATH TRUE
+                INSTALL_RPATH "$ORIGIN"
+        )
+    endif()
 endif()
 
 if(WIN32)
@@ -2099,6 +2120,8 @@ elseif(APPLE)
                 INSTALL_RPATH "@executable_path/."
         )
     endif()
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    # No GPU backend on Linux yet; trinity_stub above is the only platform.
 else()
     message(FATAL_ERROR "Unsupported trinity platform, only stub would be available!")
 endif()

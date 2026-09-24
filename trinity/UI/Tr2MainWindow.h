@@ -251,6 +251,9 @@ public:
 	void OnKeyboardLayoutChange_MacOS();
 
 	Tr2ImeState_MacOS::Type m_imeState_MacOS = Tr2ImeState_MacOS::DISABLED;
+#elif defined( __linux__ )
+	// Headless: whether the virtual window has been created (see Tr2MainWindow_Linux.cpp).
+	bool m_hasWindow_Linux = false;
 #endif
 };
 

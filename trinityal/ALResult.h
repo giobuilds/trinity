@@ -174,12 +174,12 @@ public:
 	};
 
 #if TRACK_ALRESULT == 0
-	Result<HRESULT>() :
+	Result() :
 		m_result( S_OK )
 	{
 	}
 
-	Result<HRESULT>( HRESULT result ) :
+	Result( HRESULT result ) :
 		m_result( result )
 	{
 	}
@@ -189,23 +189,23 @@ public:
 		return m_result;
 	}
 #else
-	Result<HRESULT>() :
+	Result() :
 		m_result( S_OK ), m_isChecked( false )
 	{
 	}
 
-	Result<HRESULT>( HRESULT result ) :
+	Result( HRESULT result ) :
 		m_result( result ), m_isChecked( false )
 	{
 	}
 
-	Result<HRESULT>( const Result<HRESULT>& result ) :
+	Result( const Result<HRESULT>& result ) :
 		m_result( result.m_result ), m_isChecked( false )
 	{
 		result.m_isChecked = true;
 	}
 
-	~Result<HRESULT>()
+	~Result()
 	{
 		if( !m_isChecked )
 		{
@@ -245,7 +245,7 @@ public:
 	}
 
 private:
-	Result<HRESULT>( bool );
+	Result( bool );
 	operator bool() const;
 
 	HRESULT m_result;

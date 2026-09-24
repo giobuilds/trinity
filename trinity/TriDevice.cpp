@@ -9,7 +9,7 @@
 #include "TriPythonContext.h"
 #include "RenderJob/Tr2RenderJobs.h"
 #include "Curves/TriCurveSet.h"
-#include "Include/TriMath.h"
+#include "include/TriMath.h"
 #include "Tr2SyncToGpu.h"
 #include "TriSettingsRegistrar.h"
 #include "Tr2GpuResourcePool.h"
@@ -955,6 +955,9 @@ PyObject* TriDevice::PythonCreateDeviceHelper( PyObject* args, DeviceScreenType 
 #if __APPLE__
 	void* hwndAsPtr = (void*)hwnd;
 	bool OK = CreateSimpleDevice( ( __bridge Tr2WindowHandle )( hwndAsPtr ), width, height, screenType, Tr2RenderContextEnum::PresentInterval( presentInterval ), adapter );
+#elif defined( __linux__ )
+	// Tr2WindowHandle is an integer (uintptr_t) here, so the handle converts with static_cast.
+	bool OK = CreateSimpleDevice( static_cast<Tr2WindowHandle>( hwnd ), width, height, screenType, Tr2RenderContextEnum::PresentInterval( presentInterval ), adapter );
 #else
 	bool OK = CreateSimpleDevice( reinterpret_cast<Tr2WindowHandle>( hwnd ), width, height, screenType, Tr2RenderContextEnum::PresentInterval( presentInterval ), adapter );
 #endif

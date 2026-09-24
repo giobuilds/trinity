@@ -4,6 +4,8 @@
 #include "Tr2TextureAnimation.h"
 #include "Resources/Tr2TextureLodManager.h"
 
+#include <condition_variable>
+
 namespace
 {
 

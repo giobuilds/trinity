@@ -130,7 +130,8 @@ ALResult DoGetDriverVersion( uint32_t deviceId, Tr2VideoDriverInfo& info )
 
 #else
 
-ALResult DoGetDriverVersion( uint32_t deviceId, Tr2VideoDriverInfo& info )
+// Unused by the stub platform, which reports fixed driver info from GetDriverVersion below.
+[[maybe_unused]] ALResult DoGetDriverVersion( uint32_t deviceId, Tr2VideoDriverInfo& info )
 {
 	return E_FAIL;
 }

@@ -324,6 +324,14 @@ set(_SOURCES
     stub/upscaling/Tr2UpscalingALStub.h
 )
 
+if(NOT APPLE)
+    # Every platform's sources are listed and guarded by TRINITY_PLATFORM checks. Objective-C++ files cannot be
+    # compiled off Apple (the Visual Studio generator skips them; Ninja + GCC would try to build them as ObjC++).
+    set(_OBJCXX_SOURCES ${_SOURCES})
+    list(FILTER _OBJCXX_SOURCES INCLUDE REGEX "\\.mm$")
+    set_source_files_properties(${_OBJCXX_SOURCES} PROPERTIES HEADER_FILE_ONLY TRUE)
+endif()
+
 # Ensure that we have a sane file grouping for XCode and VS project files
 if(CMAKE_GENERATOR STREQUAL "Xcode" OR CMAKE_GENERATOR MATCHES "Visual Studio.*")
     source_group(
@@ -350,6 +358,10 @@ function(set_shared_trinityal_properties targetSuffix)
             ${CMAKE_CURRENT_SOURCE_DIR}
             ${CMAKE_CURRENT_SOURCE_DIR}/..
     )
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        # TRINITY_AL_PLATFORM_INCLUDE names platform headers without their directory under GCC (see TrinityALForward.h).
+        target_include_directories(${target} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/${targetSuffix})
+    endif()
 
     target_precompile_headers(${target} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/StdAfx.h)
 
@@ -389,7 +401,7 @@ endfunction()
 FIXME currently the _stub platform does not build on macOS due to "unknown type name: 'CGKeyCode'"
 There are probably more issues because we haven't build the stub project on macOS so far IIRC
 ]]
-if(WIN32)
+if(WIN32 OR CMAKE_SYSTEM_NAME STREQUAL "Linux")
     ccp_add_library(TrinityAL_stub STATIC)
     target_compile_definitions(TrinityAL_stub PUBLIC TRINITY_PLATFORM=TRINITY_STUB)
     set_shared_trinityal_properties(stub)
@@ -507,6 +519,8 @@ elseif(APPLE)
         set_source_files_properties(${_CPP_SOURCES} PROPERTIES LANGUAGE OBJCXX)
         target_compile_options(TrinityAL_metal PRIVATE "-fobjc-arc")
     endif()
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    # No GPU backend on Linux yet; TrinityAL_stub above is the only platform.
 else()
     message(FATAL_ERROR "Unsupported trinity platform, only stub would be available!")
 endif()

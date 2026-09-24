@@ -24,6 +24,7 @@ inline const char* GetComponentName()
 	So we use a templated false value forcing the compiler to evaluate this when all the templating has been done ( I think )
 	*/
 	static_assert( workAroundForCppStandard<T>::value, "Type being used as a component which hasn't been registered via REGISTER_COMPONENT_TYPE" );
+	return nullptr; // unreachable: the assertion fails for every instantiation; keeps -Wreturn-type quiet
 }
 
 #define REGISTER_COMPONENT_TYPE( name, componentType )   \

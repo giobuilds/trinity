@@ -448,7 +448,7 @@ void PlatformKeyChanged( PlatformKey platformCode, bool pressed )
 
 }
 
-#else
+#elif defined( _WIN32 )
 
 
 namespace KeyboardHelpers
@@ -523,4 +523,53 @@ void PlatformKeyChanged( PlatformKey, bool )
 
 }
 
+#else
+
+// No display-server integration yet (X11/Wayland): platform and app keys are the same codes, key names are unknown,
+// and pressed state is tracked from PlatformKeyChanged like the macOS branch does.
+namespace
+{
+bool s_keysDown[256] = { false };
+}
+
+namespace KeyboardHelpers
+{
+
+const AppKey INVALID_APP_KEY = 0;
+const AppKey INVALID_PLATFORM_KEY = 0;
+
+PlatformKey AppKeyToPlatformKey( AppKey appCode )
+{
+	return appCode;
+}
+
+AppKey PlatformKeyToAppKey( PlatformKey platformCode )
+{
+	return platformCode;
+}
+
+std::string GetAppKeyName( AppKey )
+{
+	return "";
+}
+
+bool IsAppKeyPressed( AppKey appCode )
+{
+	return IsPlatformKeyPressed( appCode );
+}
+
+bool IsPlatformKeyPressed( PlatformKey platformCode )
+{
+	return platformCode < 256 && s_keysDown[platformCode];
+}
+
+void PlatformKeyChanged( PlatformKey platformCode, bool pressed )
+{
+	if( platformCode < 256 )
+	{
+		s_keysDown[platformCode] = pressed;
+	}
+}
+
+}
 #endif

@@ -84,7 +84,7 @@ void TriTextureParameter::UsedWithScreenSize( float screenSize, float worldRadiu
 				if( resolutionChange > 0 )
 				{
 					// quickly calculate log2 of resolutionChange, which gives us the required LOD
-#if __APPLE__
+#if defined( __GNUC__ ) // GCC and Clang
 					requestedLod = 31 - (uint32_t)__builtin_clz( resolutionChange );
 #else
 					unsigned long reverse;

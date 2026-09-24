@@ -19,6 +19,7 @@
 #include <cstdlib>
 #include <cstdint>
 #include <memory>
+#include <cstring>
 
 #ifdef _WIN32
 typedef HWND Tr2WindowHandle;

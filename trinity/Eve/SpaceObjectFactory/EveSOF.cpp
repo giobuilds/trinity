@@ -2,7 +2,7 @@
 
 #include "StdAfx.h"
 #include "Utilities/StringUtils.h"
-#include "Include/TriMath.h"
+#include "include/TriMath.h"
 #include "EveSOF.h"
 #include "EveSOFDNA.h"
 #include "EveSOFUtils.h"
@@ -1313,7 +1313,7 @@ void EveSOF::SetupPlaneSets( IEveSpaceObjectAttachmentOwnerPtr obj, const EveSOF
 							float maxScale = max( psiit.scaling.x, max( psiit.scaling.y, psiit.scaling.z ) );
 							auto saturatedColor = Saturate( planeSetItem->m_color, pslight.saturation );
 							auto lightData = pslight.AsLightData( saturatedColor, maxScale );
-							lightData.position = Transform( lightData.position, RotationMatrix( planeSetItem->m_rotation ) ) + planeSetItem->m_position;
+							lightData.position = XMVECTOR( Transform( lightData.position, RotationMatrix( planeSetItem->m_rotation ) ) ) + XMVECTOR( planeSetItem->m_position );
 							lightData.rotation = Normalize( lightData.rotation * planeSetItem->m_rotation );
 							lightData.boneIndex = planeSetItem->m_boneIndex;
 
@@ -1543,7 +1543,7 @@ void EveSOF::SetupHazeSets( IEveSpaceObjectAttachmentOwnerPtr obj, const EveSOFD
 								float maxScale = max( scale.x, max( scale.y, scale.z ) );
 
 								auto lightData = light.AsLightData( saturatedColor, maxScale );
-								lightData.position = Transform( lightData.position, RotationMatrix( hazeSetItem->m_rotation ) ) + hazeSetItem->m_position;
+								lightData.position = XMVECTOR( Transform( lightData.position, RotationMatrix( hazeSetItem->m_rotation ) ) ) + XMVECTOR( hazeSetItem->m_position );
 								lightData.rotation = Normalize( lightData.rotation * hazeSetItem->m_rotation );
 
 								lightData.boneIndex = itemData->boneIndex;
@@ -1786,7 +1786,7 @@ void EveSOF::SetupBannerSets( EveSpaceObject2Ptr obj, const EveSOFDNAPtr dna, co
 							float maxScale = max( scale.x, max( scale.y, scale.z ) );
 							auto black = Color( 0, 0, 0, 0 );
 							auto lightData = banner.light->AsLightData( black, maxScale );
-							lightData.position = Transform( lightData.position, RotationMatrix( modifiedItem.rotation ) ) + modifiedItem.position;
+							lightData.position = XMVECTOR( Transform( lightData.position, RotationMatrix( modifiedItem.rotation ) ) ) + XMVECTOR( modifiedItem.position );
 							lightData.rotation = Normalize( lightData.rotation * modifiedItem.rotation );
 
 							EveBannerLight bannerLight( lightData, banner.light->saturation, index, banner.light->lightProfilePath );
@@ -4288,7 +4288,7 @@ void EveSOF::SetupChildTurretMaterialFromFaction( EveChildTurret* childTurret, c
 		return;
 	}
 	const EveSOFDataMgr::GenericData* genericData = m_dataMgr.GetGenericData();
-	for( const Tr2MeshAreaPtr& area : *areas )
+	for( Tr2MeshArea* area : *areas )
 	{
 		if( area )
 		{
