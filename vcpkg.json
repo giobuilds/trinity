@@ -85,7 +85,7 @@
   "features": {
     "shader-compiler": {
       "description": "Shader compiler for carbon-trinity",
-      "supports": "(windows & x64) | osx",
+      "supports": "(windows & x64) | osx | (linux & x64)",
       "dependencies": [
         {
           "name": "re2c",
@@ -100,7 +100,11 @@
         {
           "name": "directx-dxc",
           "version>=": "2023-03-01#2",
-          "platform": "windows & x64"
+          "platform": "(windows & x64) | (linux & x64)"
+        },
+        {
+          "name": "directx-headers",
+          "platform": "linux"
         }
       ]
     },
@@ -198,6 +202,10 @@
         {
           "name": "directx-dxc",
           "host": true
+        },
+        {
+          "name": "directx-headers",
+          "platform": "linux"
         }
       ]
     },

@@ -7,6 +7,7 @@
 #include "EffectCompilerDX11.h"
 #include "EffectCompilerDX12.h"
 #include "EffectCompilerMetal.h"
+#include "EffectCompilerVulkan.h"
 #include "EffectData.h"
 #include "WorkQueue.h"
 #include "Macro.h"
@@ -92,6 +93,8 @@ Platform GetPlatform( const std::vector<Macro>& defines )
 	}
 #if _WIN32
 	return PLATFORM_DX11;
+#elif defined( __linux__ )
+	return PLATFORM_VULKAN;
 #else
 	return PLATFORM_METAL;
 #endif
@@ -156,6 +159,11 @@ bool CompileShader( const CompileShaderArguments& arguments, IWorkQueue* workQue
 			case PLATFORM_METAL:
 				newCompiler.reset( new EffectCompilerMetal() );
 				break;
+#if SHADERCOMPILER_WITH_DXC
+			case PLATFORM_VULKAN:
+				newCompiler.reset( new EffectCompilerVulkan() );
+				break;
+#endif
 			default:
 				g_messages.AddMessage( "\\memory(0): error X0000: unsupported platform %i", int( platform ) );
 				g_error = 1;

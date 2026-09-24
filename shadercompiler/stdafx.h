@@ -31,21 +31,35 @@
 #include <cstdint>
 #include <unistd.h>
 
+#if defined( __linux__ ) && SHADERCOMPILER_WITH_DXC
+// On Linux the Vulkan compiler uses DXC in-process (and its D3D12 reflection), so the Windows types come from DXC's
+// WinAdapter.h; the definitions below only fill in what it does not provide.
+#include <dxcapi.h>
+#include <directx/d3dcommon.h> // D3D_SHADER_MACRO, ID3DInclude, D3D_INCLUDE_TYPE (and the reflection enums)
+#undef _strnicmp
+#define _strnicmp strncasecmp // WinAdapter.h maps it to strnicmp, which glibc does not have
+#define SC_WINTYPES_FROM_DXC 1
+#else
+#define SC_WINTYPES_FROM_DXC 0
+#endif
+
 // TODO MACOS: The definitions below are made to minimize the amount of code changes needed for ShaderCompiler
 // at this stage.
 
+#if !SC_WINTYPES_FROM_DXC
 #define __stdcall
-
-#define _stricmp strcasecmp
 #define _strnicmp strncasecmp
-
-#define MAX_PATH 260
 
 #define S_OK 0x00000000
 #define E_FAIL 0x80004005
 
 #define SUCCEEDED( hr ) ( ( (HRESULT)( hr ) ) >= 0 )
 #define FAILED( hr ) ( ( (HRESULT)( hr ) ) < 0 )
+#endif
+
+#define _stricmp strcasecmp
+
+#define MAX_PATH 260
 
 #define D3D11_FILTER_REDUCTION_TYPE_MASK ( 0x3 )
 #define D3D11_FILTER_REDUCTION_TYPE_SHIFT ( 7 )
@@ -77,11 +91,13 @@
 // and expected to be a 32-bit integer, but "long" is 64-bit on Mac.
 // Same rationale applies for other integer types.
 #define CONST const
+typedef float FLOAT;
+typedef void* PVOID;
+#if !SC_WINTYPES_FROM_DXC
 typedef int BOOL;
 typedef unsigned char BYTE;
 // typedef unsigned long DWORD;
 typedef uint32_t DWORD;
-typedef float FLOAT;
 // typedef unsigned int UINT;
 typedef uint32_t UINT;
 // typedef unsigned short WORD;
@@ -90,7 +106,6 @@ typedef const char* LPCSTR;
 typedef char* LPSTR;
 typedef const void* LPCVOID;
 typedef void* LPVOID;
-typedef void* PVOID;
 // typedef long LONG;
 typedef int32_t LONG;
 typedef LONG HRESULT;
@@ -101,7 +116,9 @@ typedef struct _FILETIME
 	DWORD dwLowDateTime;
 	DWORD dwHighDateTime;
 } FILETIME, *PFILETIME, *LPFILETIME;
+#endif
 
+#if !SC_WINTYPES_FROM_DXC
 struct ID3DInclude
 {
 };
@@ -118,6 +135,7 @@ enum D3D_INCLUDE_TYPE
 	D3D_INCLUDE_SYSTEM = ( D3D_INCLUDE_LOCAL + 1 ),
 	D3D_INCLUDE_FORCE_DWORD = 0x7fffffff
 };
+#endif
 
 enum D3D11_FILTER
 {
@@ -234,7 +252,12 @@ enum D3D11_FILL_MODE
 #endif
 
 #include <cassert>
+#include <cstdarg>
 #include <cstddef>
+#include <cerrno>
+#include <climits>
+#include <cmath>
+#include <cstring>
 #include <cstdint>
 #include <cstdio>
 #include <map>
@@ -266,6 +289,10 @@ enum D3D11_FILL_MODE
 #endif
 
 #ifndef _WIN32
+
+#if !defined( __APPLE__ )
+typedef int errno_t; // macOS has errno_t; glibc does not
+#endif
 
 inline errno_t fopen_s( FILE** stream, char const* fileName, char const* mode )
 {

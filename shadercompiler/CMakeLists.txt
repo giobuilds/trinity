@@ -21,8 +21,12 @@ set(_SOURCES
     EffectCompilerDX11.h
     EffectCompilerDX12.cpp
     EffectCompilerDX12.h
+    EffectCompilerHLSLShared.cpp
+    EffectCompilerHLSLShared.h
     EffectCompilerMetal.cpp
     EffectCompilerMetal.h
+    EffectCompilerVulkan.cpp
+    EffectCompilerVulkan.h
     EffectData.cpp
     EffectData.h
     FXAnalyzer.cpp
@@ -74,7 +78,12 @@ set(_TEST_SOURCES
     tests/RayTracingTest.cpp
     tests/ShaderCompilerTest.cpp
     tests/TesingUtils.h
+    tests/VulkanCompilerTest.cpp
 )
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    # These exercise the DX12 and Metal back ends, which need the Windows SDK or Apple's metal toolchain.
+    list(REMOVE_ITEM _TEST_SOURCES tests/Bindless.cpp tests/GlobalInputTest.cpp tests/MetalConversionTest.cpp tests/RayTracingTest.cpp)
+endif()
 
 
 if (APPLE)
@@ -112,6 +121,13 @@ if (WIN32)
             find_package(directx-dxc CONFIG REQUIRED)
         endif()
     endif()
+endif()
+
+if (CMAKE_SYSTEM_NAME STREQUAL "Linux" AND WITH_DXC)
+    # The Vulkan compiler runs DXC in-process: SPIR-V for the shipped bytecode, DXIL for D3D12 reflection
+    # (DirectX-Headers provides d3d12shader.h; shadercompiler/linux has the Windows-header stand-ins it includes).
+    find_package(directx-dxc CONFIG REQUIRED)
+    find_path(DIRECTX_HEADERS_INCLUDE_DIR directx/d3d12shader.h REQUIRED)
 endif()
 
 function(configure_shader_compiler target)
@@ -158,12 +174,12 @@ function(configure_shader_compiler target)
         set(FORCE_ZERO_RETURN_FROM_LEMON "exit /b 0")
         set(CMD "cmd")
         set(CMD_ARG "/c")
-    elseif(APPLE)
+    elseif(APPLE OR CMAKE_SYSTEM_NAME STREQUAL "Linux")
         set(FORCE_ZERO_RETURN_FROM_LEMON "true")
         set(CMD "bash")
         set(CMD_ARG "-c")
     else()
-        message(FATAL "Unsupported Platform")
+        message(FATAL_ERROR "Unsupported Platform")
     endif()
 
     add_custom_command(
@@ -217,7 +233,16 @@ function(configure_shader_compiler target)
             COMMAND_EXPAND_LISTS
         )
     else()
+        if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND WITH_DXC)
+            target_compile_definitions(${target} PRIVATE SHADERCOMPILER_WITH_DXC=1)
+            target_include_directories(${target} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/linux ${DIRECTX_HEADERS_INCLUDE_DIR})
+            target_link_libraries(${target} PRIVATE Microsoft::DirectXShaderCompiler)
+        endif()
         target_compile_options(${target} PRIVATE -Wall -Wextra -pedantic -Wno-gnu-zero-variadic-macro-arguments -Wno-unused-command-line-argument)
+        if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+            # GCC's -Wextra adds -Wimplicit-fallthrough, which Clang's (the macOS baseline) does not.
+            target_compile_options(${target} PRIVATE -Wno-implicit-fallthrough)
+        endif()
         set_source_files_properties(${GENERATED_SOURCES_DIR}/HLSLParser.c PROPERTIES COMPILE_FLAGS "-x c++ -Wno-unused-parameter -Wno-sign-compare -Wno-unused-variable")
         set_source_files_properties(${GENERATED_SOURCES_DIR}/Preprocessor.c PROPERTIES COMPILE_FLAGS "-x c++ -Wno-unused-parameter -Wno-sign-compare -Wno-unused-variable")
     endif()
@@ -320,4 +345,8 @@ if(BUILD_TESTING)
     configure_shader_compiler(ShaderCompilerTest)
     set_target_properties(ShaderCompilerTest PROPERTIES FOLDER "Tests")
     add_dependencies(ShaderCompilerTest ShaderCompiler)
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        include(GoogleTest)
+        gtest_discover_tests(ShaderCompilerTest DISCOVERY_MODE PRE_TEST)
+    endif()
 endif()

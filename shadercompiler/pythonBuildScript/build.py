@@ -18,16 +18,17 @@ import yaml
 
 BUILDER_DIR = Path(__file__).resolve().parent
 BRANCH_DIR = BUILDER_DIR.parents[2]
-SHADER_COMPILER = (BUILDER_DIR / "Windows" / "ShaderCompiler.exe" if sys.platform == 'win32' else
-                   BUILDER_DIR / "macOS" / "ShaderCompiler") if sys.platform in ('win32', 'darwin') else None
+SHADER_COMPILER = {'win32': BUILDER_DIR / "Windows" / "ShaderCompiler.exe",
+                   'darwin': BUILDER_DIR / "macOS" / "ShaderCompiler",
+                   'linux': BUILDER_DIR / "Linux" / "ShaderCompiler"}.get(sys.platform)
 if SHADER_COMPILER is None:
     raise RuntimeError('Unsupported platform')
 
 ARGS_PATH = BUILDER_DIR / 'shadercompiler.args'
 
 SHADER_MODELS = {'lo': 3, 'hi': 4, 'depth': 5}
-PLATFORMS = {'dx11': 2, 'dx12': 6, 'metal': 10}
-SUPPORTED_PLATFORMS = ('metal',) if sys.platform == 'darwin' else ('dx11', 'dx12', 'metal') if sys.platform == 'win32' else ()
+PLATFORMS = {'dx11': 2, 'dx12': 6, 'metal': 10, 'vulkan': 14}
+SUPPORTED_PLATFORMS = {'darwin': ('metal',), 'win32': ('dx11', 'dx12', 'metal'), 'linux': ('vulkan',)}.get(sys.platform, ())
 
 
 def expand_directories(path):

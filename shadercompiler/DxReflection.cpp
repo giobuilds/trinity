@@ -1,7 +1,7 @@
 // Copyright © 2023 CCP ehf.
 
 #include "stdafx.h"
-#if _WIN32
+#if _WIN32 || SHADERCOMPILER_WITH_DXC
 #include "DxReflection.h"
 #include "HLSLParser.h"
 #include "ParserUtils.h"

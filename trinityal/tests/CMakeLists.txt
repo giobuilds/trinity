@@ -295,7 +295,8 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND BUILD_VULKAN)
         add_custom_command(
             OUTPUT ${GENERATED_SOURCES_DIR}/${shaderOutput}
             COMMAND ${CMAKE_COMMAND} -E make_directory ${GENERATED_SOURCES_DIR}/Shaders.Vulkan
-            COMMAND ${DIRECTX_DXC_TOOL} -nologo -spirv -fspv-target-env=vulkan1.3 -fvk-use-dx-layout
+            # Same flags as EffectCompilerVulkan (shadercompiler/EffectCompilerVulkan.cpp CommonArguments/SpirvArguments).
+            COMMAND ${DIRECTX_DXC_TOOL} -nologo -Zpc -HV 2018 -spirv -fspv-target-env=vulkan1.3 -fvk-use-dx-layout -fvk-stage-io-order=alpha
                     -fvk-b-shift 0 all -fvk-s-shift 32 all -fvk-t-shift 64 all -fvk-u-shift 128 all
                     -T ${SHADER_TARGET} -E main -Fo ${GENERATED_SOURCES_DIR}/${vulkanName}.bin ${CMAKE_CURRENT_SOURCE_DIR}/${shaderSource}
             COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/bin2h.cmd ${GENERATED_SOURCES_DIR}/${vulkanName}.bin ${GENERATED_SOURCES_DIR}/${shaderOutput}

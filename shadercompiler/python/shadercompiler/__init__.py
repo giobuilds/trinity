@@ -3,9 +3,10 @@
 class Platform(object):
     DX11 = 2
     DX12 = 6
+    VULKAN = 14
 
 
-PLATFORM_NAMES = {Platform.DX11: 'dx11', Platform.DX12: 'dx12'}
+PLATFORM_NAMES = {Platform.DX11: 'dx11', Platform.DX12: 'dx12', Platform.VULKAN: 'vulkan'}
 
 
 class ShaderModel(object):

@@ -3,6 +3,7 @@
 import unittest2
 
 import shadercompiler.paths as paths
+from shadercompiler import Platform, ShaderModel
 
 
 class TestPaths(unittest2.TestCase):
@@ -20,6 +21,11 @@ class TestPaths(unittest2.TestCase):
 
     def test_get_compiled_path_changes_extension(self):
         self.assertFalse(paths.get_compiled_path('res:/effect/test.fx').endswith('.fx'))
+
+    def test_get_compiled_path_for_vulkan_uses_vulkan_folder(self):
+        self.assertEqual(
+            paths.get_compiled_path('res:/graphics/effect/managed/foo.fx', ShaderModel.HI, Platform.VULKAN),
+            'res:/graphics/effect.vulkan/managed/foo.sm_hi')
 
     def test_get_compiled_path_changes_effect_folder(self):
         self.assertFalse('/effect/' in paths.get_compiled_path('res:/effect/test.fx'))

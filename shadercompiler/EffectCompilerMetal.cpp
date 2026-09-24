@@ -4634,11 +4634,10 @@ std::vector<uint8_t> CompileCode( const std::string& code, const std::vector<Mac
 			}
 
 			fseek( file, 0, SEEK_END );
-			fpos_t pos = 0;
-			fgetpos( file, &pos );
+			long pos = ftell( file ); // fpos_t is an opaque struct on glibc
 			fseek( file, 0, SEEK_SET );
 
-			size_t dataSize = pos;
+			size_t dataSize = pos > 0 ? size_t( pos ) : 0;
 			compiledCode.resize( dataSize );
 
 			size_t readBytes = fread( compiledCode.data(), 1, dataSize, file );

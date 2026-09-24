@@ -26,6 +26,12 @@ std::string GetDirPath( const char* filepath )
 #if _WIN32
 	const char* filename = PathFindFileName( filepath );
 	return std::string( filepath, filename - filepath );
+#elif defined( __linux__ )
+	// glibc has no dirname_r; POSIX dirname() may modify its argument, so work on a copy.
+	char storage[MAXPATHLEN];
+	strncpy( storage, filepath, sizeof( storage ) - 1 );
+	storage[sizeof( storage ) - 1] = 0;
+	return dirname( storage );
 #else
 	char storage[MAXPATHLEN];
 	const char* dirName = dirname_r( filepath, storage );

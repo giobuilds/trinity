@@ -7,9 +7,15 @@
 #include "ParserState.h"
 #include "SymbolTable.h"
 #include "CompileMessageQueue.h"
-#include "FxAnalyzer.h"
+#include "FXAnalyzer.h"
 #include "HLSLParser.h"
 #include "ParserUtils.h"
+#include "TextureFunctionConversionDX11.h" // BindlessTextureType
+
+#if !_WIN32
+// DXC on Linux: D3D12 reflection interfaces from DirectX-Headers (see linux/ for the Windows headers they include).
+#include <directx/d3d12shader.h>
+#endif
 #include "ASTNode.h"
 
 
@@ -66,6 +72,8 @@ static bool GetTextureType( const T& desc, TextureType& type )
 			break;
 		case D3D10_SRV_DIMENSION_BUFFER:
 			type = TEX_TYPE_BUFFER;
+			break;
+		default: // other dimensions (arrays, multisampled) stay TEX_TYPE_TYPELESS
 			break;
 		}
 		break;
@@ -179,16 +187,19 @@ RegisterInputType GetRegisterType( const T& desc )
 	}
 }
 
+#if _WIN32
 inline uint8_t GetSpaceFromDesc( const D3D11_SHADER_INPUT_BIND_DESC& )
 {
 	return 0;
 }
+#endif
 
 inline uint8_t GetSpaceFromDesc( const D3D12_SHADER_INPUT_BIND_DESC& desc )
 {
 	return uint8_t( desc.Space );
 }
 
+#if _WIN32
 struct ReflectionDx11
 {
 	using Reflection = ID3D11ShaderReflection;
@@ -198,6 +209,19 @@ struct ReflectionDx11
 	using VariableDesc = D3D11_SHADER_VARIABLE_DESC;
 	using TypeDesc = D3D11_SHADER_TYPE_DESC;
 	using SignatureParamDesc = D3D11_SIGNATURE_PARAMETER_DESC;
+};
+#endif
+
+// Whole-shader D3D12 reflection (DXIL from dxc); the Vulkan compiler reflects the DXIL twin of its SPIR-V with it.
+struct ReflectionDx12
+{
+	using Reflection = ID3D12ShaderReflection;
+	using ShaderDesc = D3D12_SHADER_DESC;
+	using BufferDesc = D3D12_SHADER_BUFFER_DESC;
+	using InputBindDesc = D3D12_SHADER_INPUT_BIND_DESC;
+	using VariableDesc = D3D12_SHADER_VARIABLE_DESC;
+	using TypeDesc = D3D12_SHADER_TYPE_DESC;
+	using SignatureParamDesc = D3D12_SIGNATURE_PARAMETER_DESC;
 };
 
 struct FunctionDx12
