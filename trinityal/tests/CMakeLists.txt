@@ -136,6 +136,11 @@ function(set_shared_trinityaltest_properties target)
         target_link_libraries(${target} PRIVATE GTest::gtest GTest::gtest_main GTest::gmock GTest::gmock_main)
     endif()
     
+    if(NOT APPLE)
+        # Objective-C++ window helpers only build with the Apple toolchain.
+        set_source_files_properties(RenderWindow_Macos.mm WithWindowFixture_Macos.mm PROPERTIES HEADER_FILE_ONLY TRUE)
+    endif()
+
     if(APPLE)
         file(GLOB_RECURSE _CPP_SOURCES "*.cpp")
         set_source_files_properties(${_CPP_SOURCES} PROPERTIES LANGUAGE OBJCXX)
@@ -262,6 +267,45 @@ if(WIN32)
 
     endif()
 
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND BUILD_VULKAN)
+    ccp_add_executable(TrinityALTest_vulkan ${_SOURCES})
+    target_link_libraries(TrinityALTest_vulkan PRIVATE TrinityAL_vulkan)
+    target_compile_definitions(TrinityALTest_vulkan PRIVATE TRINITY_PLATFORM=TRINITY_VULKAN)
+    set_shared_trinityaltest_properties(TrinityALTest_vulkan)
+
+    # The DX12 test shaders are plain HLSL; dxc compiles them to SPIR-V. D3D registers share one Vulkan binding space
+    # per set, so each register type gets its own binding range (b: 0, s: 32, t: 64, u: 128) and the register space
+    # becomes the descriptor set. The effect compiler uses the same convention.
+    find_package(directx-dxc CONFIG REQUIRED)
+    find_package(Python3 COMPONENTS Interpreter REQUIRED)
+    set(_SHADERS_VULKAN ${_SHADERS_DX12})
+    list(FILTER _SHADERS_VULKAN EXCLUDE REGEX "\\.rsh$") # raytracing libraries: no Vulkan raytracing yet
+    foreach(shaderSource ${_SHADERS_VULKAN})
+        string(REGEX REPLACE "^Shaders\\.DX12/" "Shaders.Vulkan/" vulkanName ${shaderSource})
+        string(REGEX REPLACE "h$" ".h" shaderOutput ${vulkanName})
+        if(${shaderSource} MATCHES ".*psh$")
+            set(SHADER_TARGET ps_6_0)
+        elseif(${shaderSource} MATCHES ".*vsh$")
+            set(SHADER_TARGET vs_6_0)
+        else()
+            set(SHADER_TARGET cs_6_0)
+        endif()
+        add_custom_command(
+            OUTPUT ${GENERATED_SOURCES_DIR}/${shaderOutput}
+            COMMAND ${CMAKE_COMMAND} -E make_directory ${GENERATED_SOURCES_DIR}/Shaders.Vulkan
+            COMMAND ${DIRECTX_DXC_TOOL} -nologo -spirv -fspv-target-env=vulkan1.3 -fvk-use-dx-layout
+                    -fvk-b-shift 0 all -fvk-s-shift 32 all -fvk-t-shift 64 all -fvk-u-shift 128 all
+                    -T ${SHADER_TARGET} -E main -Fo ${GENERATED_SOURCES_DIR}/${vulkanName}.bin ${CMAKE_CURRENT_SOURCE_DIR}/${shaderSource}
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/bin2h.cmd ${GENERATED_SOURCES_DIR}/${vulkanName}.bin ${GENERATED_SOURCES_DIR}/${shaderOutput}
+            MAIN_DEPENDENCY ${shaderSource}
+        )
+        target_sources(TrinityALTest_vulkan PRIVATE ${GENERATED_SOURCES_DIR}/${shaderOutput})
+    endforeach()
+
+    include(GoogleTest)
+    gtest_discover_tests(TrinityALTest_vulkan DISCOVERY_MODE PRE_TEST)
 endif()
 
 

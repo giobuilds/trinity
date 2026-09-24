@@ -2,7 +2,8 @@
 
 #pragma once
 
-#if TRINITY_PLATFORM != TRINITY_STUB
+// No SPIR-V build of the FSR1 shaders yet (Fsr1DX.h / Fsr1Metal.h only), so Vulkan skips it like the stub.
+#if TRINITY_PLATFORM != TRINITY_STUB && TRINITY_PLATFORM != TRINITY_VULKAN
 
 #include "Tr2UpscalingAL.h"
 #include "Tr2RenderContextAL.h"

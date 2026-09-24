@@ -1,13 +1,15 @@
 // Copyright © 2023 CCP ehf.
 
 #include "StdAfx.h"
-#if !defined( _WIN32 ) && !defined( TRINITY_AL_MOBILE ) && ( TRINITY_PLATFORM == TRINITY_STUB )
+// Headless window, also used by the Vulkan backend until its SDL3 window exists.
+#if !defined( _WIN32 ) && !defined( TRINITY_AL_MOBILE ) && ( TRINITY_PLATFORM == TRINITY_STUB || TRINITY_PLATFORM == TRINITY_VULKAN )
 #include "RenderWindow.h"
 #include "WithWindowFixture.h"
 
 RenderWindow::RenderWindow( uint32_t width, uint32_t height )
 {
-	m_handle = reinterpret_cast<Tr2WindowHandle>( ( width & 0xffff ) | ( ( height & 0xffff ) << 16 ) );
+	// A fake handle encoding the client size; C-style cast because Tr2WindowHandle is a pointer on Windows and an integer on Linux.
+	m_handle = (Tr2WindowHandle)( uintptr_t( ( width & 0xffff ) | ( ( height & 0xffff ) << 16 ) ) );
 }
 
 RenderWindow::~RenderWindow()
@@ -16,12 +18,12 @@ RenderWindow::~RenderWindow()
 
 uint32_t RenderWindow::GetClientWidth() const
 {
-	return reinterpret_cast<uintptr_t>( m_handle ) & 0xffff;
+	return uint32_t( (uintptr_t)m_handle & 0xffff );
 }
 
 uint32_t RenderWindow::GetClientHeight() const
 {
-	return ( reinterpret_cast<uintptr_t>( m_handle ) >> 16 ) & 0xffff;
+	return uint32_t( ( (uintptr_t)m_handle >> 16 ) & 0xffff );
 }
 
 bool RenderWindow::Resize( uint32_t width, uint32_t height )

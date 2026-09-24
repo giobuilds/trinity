@@ -322,6 +322,41 @@ set(_SOURCES
     stub/Tr2VideoAdapterInfoALStub.h
     stub/upscaling/Tr2UpscalingALStub.cpp
     stub/upscaling/Tr2UpscalingALStub.h
+    vulkan/Tr2BufferALVulkan.cpp
+    vulkan/Tr2BufferALVulkan.h
+    vulkan/Tr2CapsALVulkan.cpp
+    vulkan/Tr2CapsALVulkan.h
+    vulkan/Tr2ConstantBufferALVulkan.cpp
+    vulkan/Tr2ConstantBufferALVulkan.h
+    vulkan/Tr2FenceALVulkan.cpp
+    vulkan/Tr2FenceALVulkan.h
+    vulkan/Tr2GpuTimerALVulkan.cpp
+    vulkan/Tr2GpuTimerALVulkan.h
+    vulkan/Tr2OcclusionQueryALVulkan.cpp
+    vulkan/Tr2OcclusionQueryALVulkan.h
+    vulkan/Tr2PipelineStatsQueryALVulkan.cpp
+    vulkan/Tr2PipelineStatsQueryALVulkan.h
+    vulkan/Tr2PrimaryRenderContextVulkan.h
+    vulkan/Tr2RenderContextVulkan.cpp
+    vulkan/Tr2RenderContextVulkan.h
+    vulkan/Tr2ResourceSetALVulkan.cpp
+    vulkan/Tr2ResourceSetALVulkan.h
+    vulkan/Tr2SamplerStateALVulkan.cpp
+    vulkan/Tr2SamplerStateALVulkan.h
+    vulkan/Tr2ShaderALVulkan.cpp
+    vulkan/Tr2ShaderALVulkan.h
+    vulkan/Tr2ShaderProgramALVulkan.cpp
+    vulkan/Tr2ShaderProgramALVulkan.h
+    vulkan/Tr2SwapChainALVulkan.cpp
+    vulkan/Tr2SwapChainALVulkan.h
+    vulkan/Tr2TextureALVulkan.cpp
+    vulkan/Tr2TextureALVulkan.h
+    vulkan/Tr2VertexLayoutALVulkan.cpp
+    vulkan/Tr2VertexLayoutALVulkan.h
+    vulkan/Tr2VideoAdapterInfoALVulkan.cpp
+    vulkan/Tr2VideoAdapterInfoALVulkan.h
+    vulkan/upscaling/Tr2UpscalingALVulkan.cpp
+    vulkan/upscaling/Tr2UpscalingALVulkan.h
 )
 
 if(NOT APPLE)
@@ -520,7 +555,15 @@ elseif(APPLE)
         target_compile_options(TrinityAL_metal PRIVATE "-fobjc-arc")
     endif()
 elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-    # No GPU backend on Linux yet; TrinityAL_stub above is the only platform.
+    if(BUILD_VULKAN)
+        # Vulkan is loaded at runtime through volk (no link against libvulkan); VMA manages device memory.
+        find_package(volk CONFIG REQUIRED)
+        find_package(VulkanMemoryAllocator CONFIG REQUIRED)
+        ccp_add_library(TrinityAL_vulkan STATIC)
+        target_compile_definitions(TrinityAL_vulkan PUBLIC TRINITY_PLATFORM=TRINITY_VULKAN)
+        set_shared_trinityal_properties(vulkan)
+        target_link_libraries(TrinityAL_vulkan PUBLIC volk::volk_headers GPUOpen::VulkanMemoryAllocator PRIVATE volk::volk)
+    endif()
 else()
     message(FATAL_ERROR "Unsupported trinity platform, only stub would be available!")
 endif()
@@ -528,5 +571,6 @@ endif()
 option(BUILD_TESTING "Build and run tests. Enabled by default." ON)
 message(STATUS " BUILD_TESTING VALUE IS ${BUILD_TESTING}")
 if(BUILD_TESTING)
+    enable_testing()
     add_subdirectory(tests)
 endif()

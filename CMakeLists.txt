@@ -20,6 +20,8 @@ else()
         option(BUILD_DX12 "Build dx12." OFF)
     elseif(APPLE)
         option(BUILD_METAL "Build Metal." OFF)
+    elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        option(BUILD_VULKAN "Build Vulkan." OFF)
     endif()
 
     if (BUILD_DX11)
@@ -32,6 +34,10 @@ else()
 
     if (BUILD_METAL)
         list(APPEND VCPKG_MANIFEST_FEATURES "metal")
+    endif()
+
+    if (BUILD_VULKAN)
+        list(APPEND VCPKG_MANIFEST_FEATURES "vulkan")
     endif()
 
     if (BUILD_SHADER_COMPILER)
@@ -92,6 +98,8 @@ if (BUILD_SHADER_COMPILER OR BUILD_FOR_PYTHON_2)
     add_subdirectory(shadercompiler)
 endif ()
 
+# Lets ctest at the build root see the tests registered below (trinityal/tests).
+enable_testing()
 add_subdirectory(trinityal)
 add_subdirectory(trinity)
 

@@ -18,6 +18,7 @@ typedef HWND Tr2WindowHandle;
 typedef id Tr2WindowHandle;
 #else
 #include <cstdint>
+#include <cmath>
 typedef uintptr_t Tr2WindowHandle;
 #endif
 
@@ -31,6 +32,8 @@ typedef uintptr_t Tr2WindowHandle;
 #define SHADER_PATH Shaders.DX12
 #elif ( TRINITY_PLATFORM == TRINITY_METAL )
 #define SHADER_PATH Shaders.metal
+#elif ( TRINITY_PLATFORM == TRINITY_VULKAN )
+#define SHADER_PATH Shaders.Vulkan
 #else
 #error Define shader path for this TrinityAL platform
 #endif

@@ -1751,6 +1751,7 @@ set(_SOURCES
     TriDevice_Blue.cpp
     TriDeviceMetal.cpp
     TriDeviceStub.cpp
+    TriDeviceVulkan.cpp
     TriFloat.cpp
     TriFloat.h
     TriFloat_Blue.cpp
@@ -2121,7 +2122,30 @@ elseif(APPLE)
         )
     endif()
 elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-    # No GPU backend on Linux yet; trinity_stub above is the only platform.
+    if(BUILD_VULKAN)
+        set(TRINITY_VULKAN_TARGET_NAME trinity_vulkan)
+
+        ccp_add_library(${TRINITY_VULKAN_TARGET_NAME} SHARED)
+        target_compile_definitions(${TRINITY_VULKAN_TARGET_NAME}
+            PRIVATE
+                TRINITY_PLATFORM=TRINITY_VULKAN
+                TRINITYNAME=_trinity_vulkan
+        )
+        set_shared_trinity_properties(${TRINITY_VULKAN_TARGET_NAME})
+
+        # SDL3 is the Linux window/input layer (see docs/vulkan-backend-plan.md in the superproject).
+        find_package(SDL3 CONFIG REQUIRED)
+        target_link_libraries(${TRINITY_VULKAN_TARGET_NAME} PRIVATE TrinityAL_vulkan SDL3::SDL3)
+
+        # A Python extension module: _trinity_vulkan<flavor>.so, not lib_trinity_vulkan<flavor>.so.
+        set_target_properties(${TRINITY_VULKAN_TARGET_NAME}
+            PROPERTIES
+                PREFIX ""
+                SUFFIX ".so"
+                BUILD_WITH_INSTALL_RPATH TRUE
+                INSTALL_RPATH "$ORIGIN"
+        )
+    endif()
 else()
     message(FATAL_ERROR "Unsupported trinity platform, only stub would be available!")
 endif()
