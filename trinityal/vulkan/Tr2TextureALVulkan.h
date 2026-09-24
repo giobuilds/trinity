@@ -6,13 +6,24 @@
 
 #include "../include/Tr2TextureAL.h"
 #include "../Tr2HalHelperStructures.h"
+#include "VulkanDevice.h"
+
+#include <memory>
+#include <string>
 
 namespace TrinityALImpl
 {
+
+// A VkImage with its own VMA allocation. Images live in VK_IMAGE_LAYOUT_GENERAL for their whole life (one transition
+// from UNDEFINED at creation), so every use (sampling, storage, attachment, copies) is valid without layout tracking;
+// ordering comes from the device's full barriers until per-resource state tracking lands. CPU access goes through
+// staging buffers: MapForReading copies the subresource out and waits, MapForWriting hands out a region-sized buffer that
+// UnmapForWriting copies in, ordered with the command stream.
 class Tr2TextureAL : public Tr2DeviceResourceAL<Tr2TextureAL>
 {
 public:
 	Tr2TextureAL();
+	~Tr2TextureAL();
 
 	ALResult Create( const Tr2BitmapDimensions& desc, const Tr2MsaaDesc& msaa, Tr2GpuUsage::Type gpuUsage, Tr2CpuUsage::Type cpuUsage, Tr2SubresourceData* initialData, Tr2PrimaryRenderContextAL& renderContext );
 	ALResult OpenShared( uintptr_t handle, Tr2GpuUsage::Type gpuUsage, Tr2PrimaryRenderContextAL& renderContext );
@@ -46,12 +57,39 @@ public:
 	uint32_t GetSrvIndexInHeap( Tr2RenderContextEnum::ColorSpace colorSpace = Tr2RenderContextEnum::COLOR_SPACE_LINEAR ) const;
 	uint32_t GetUavIndexInHeap( uint32_t mip ) const;
 
+	VkImage GetVkImage() const
+	{
+		return m_image;
+	}
+	VkFormat GetVkFormat() const
+	{
+		return m_vkFormat;
+	}
+	VkImageAspectFlags GetAspectMask() const
+	{
+		return m_aspect;
+	}
+
 private:
+	void RecordInitialLayout();
+	bool UploadInitialData( const Tr2SubresourceData* initialData );
+
 	Tr2BitmapDimensions m_desc;
 	Tr2MsaaDesc m_msaa;
 	Tr2GpuUsage::Type m_gpuUsage;
 	Tr2CpuUsage::Type m_cpuUsage;
-	CcpMallocBuffer m_data;
+
+	std::shared_ptr<VulkanDevice> m_device;
+	VkImage m_image = VK_NULL_HANDLE;
+	VmaAllocation m_allocation = VK_NULL_HANDLE;
+	VkFormat m_vkFormat = VK_FORMAT_UNDEFINED;
+	VkImageAspectFlags m_aspect = 0;
+	std::string m_name;
+
+	// The buffer handed out by the current map, and for writes the region to copy it into.
+	VulkanDevice::StagingBuffer m_readStaging;
+	VulkanDevice::StagingBuffer m_writeStaging;
+	Tr2TextureSubresource m_writeRegion;
 };
 }
 

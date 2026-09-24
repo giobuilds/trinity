@@ -13,7 +13,8 @@ namespace TrinityALImpl
 class VulkanDevice;
 
 // Memory placement by CPU usage:
-// - NONE: device-local, filled from a staging copy (initial data is required, as on the other platforms).
+// - NONE: device-local, filled from a staging copy (initial data is required unless the buffer is a UAV; without it the
+//   buffer starts zeroed).
 // - READ and/or WRITE: host-visible and persistently mapped (random access when readable, write-combined otherwise).
 // Maps synchronize with the GPU conservatively (all submitted work) until per-resource use tracking exists;
 // NON_SYNCRONIZED_WRITE skips that, as the flag promises.

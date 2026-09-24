@@ -7,6 +7,7 @@
 #include "VulkanDevice.h"
 #include "ALLog.h"
 #include "Tr2AdapterStructures.h"
+#include "VulkanFormats.h"
 
 #include <algorithm>
 #include <atomic>
@@ -368,6 +369,11 @@ bool VulkanDevice::Initialize( uint32_t adapterIndex )
 	// Core 1.0 features the engine can use, when present.
 	VkPhysicalDeviceFeatures available{};
 	vkGetPhysicalDeviceFeatures( m_adapter.physicalDevice, &available );
+	{
+		VkFormatProperties d24{};
+		vkGetPhysicalDeviceFormatProperties( m_adapter.physicalDevice, VK_FORMAT_D24_UNORM_S8_UINT, &d24 );
+		m_hasD24S8 = ( d24.optimalTilingFeatures & VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT ) != 0;
+	}
 	m_features.samplerAnisotropy = available.samplerAnisotropy;
 	m_features.textureCompressionBC = available.textureCompressionBC;
 	m_features.geometryShader = available.geometryShader;
@@ -494,6 +500,12 @@ VulkanDevice::~VulkanDevice()
 		Submit();
 	}
 	WaitIdle();
+	// Released after the last submit (typically by the last resource holding the device): the GPU is idle, so now.
+	for( auto& release : m_pendingReleases )
+	{
+		release();
+	}
+	m_pendingReleases.clear();
 	for( auto& frame : m_frames )
 	{
 		if( frame.fence )
@@ -611,38 +623,70 @@ void VulkanDevice::ReleaseLater( std::function<void()> release )
 	m_pendingReleases.push_back( std::move( release ) );
 }
 
+bool VulkanDevice::CreateStagingBuffer( VkDeviceSize size, bool readback, StagingBuffer& staging )
+{
+	staging = StagingBuffer();
+	VkBufferCreateInfo bufferInfo{ VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
+	bufferInfo.size = std::max<VkDeviceSize>( size, 4 );
+	bufferInfo.usage = readback ? VK_BUFFER_USAGE_TRANSFER_DST_BIT : VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+	VmaAllocationCreateInfo allocationInfo{};
+	allocationInfo.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT;
+	allocationInfo.usage = readback ? VMA_MEMORY_USAGE_GPU_TO_CPU : VMA_MEMORY_USAGE_CPU_ONLY;
+	VmaAllocationInfo info{};
+	VkResult result = vmaCreateBuffer( m_allocator, &bufferInfo, &allocationInfo, &staging.buffer, &staging.allocation, &info );
+	if( result != VK_SUCCESS )
+	{
+		CCP_AL_LOGERR( "Vulkan: staging buffer of %llu bytes failed: %s", (unsigned long long)size, VkResultToString( result ) );
+		staging = StagingBuffer();
+		return false;
+	}
+	staging.mapped = info.pMappedData;
+	return true;
+}
+
+void VulkanDevice::ReleaseStagingBuffer( StagingBuffer& staging )
+{
+	if( staging.buffer )
+	{
+		VmaAllocator allocator = m_allocator;
+		VkBuffer buffer = staging.buffer;
+		VmaAllocation allocation = staging.allocation;
+		ReleaseLater( [allocator, buffer, allocation] { vmaDestroyBuffer( allocator, buffer, allocation ); } );
+	}
+	staging = StagingBuffer();
+}
+
+VkFormat VulkanDevice::GetImageFormat( Tr2RenderContextEnum::PixelFormat format ) const
+{
+	VkFormat vkFormat = ToVkFormat( format );
+	if( vkFormat == VK_FORMAT_D24_UNORM_S8_UINT && !m_hasD24S8 )
+	{
+		return VK_FORMAT_D32_SFLOAT_S8_UINT;
+	}
+	return vkFormat;
+}
+
 bool VulkanDevice::UploadToBuffer( VkBuffer dst, VkDeviceSize offset, const void* data, VkDeviceSize size )
 {
 	if( size == 0 )
 	{
 		return true;
 	}
-	VkBufferCreateInfo bufferInfo{ VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
-	bufferInfo.size = size;
-	bufferInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
-	VmaAllocationCreateInfo allocationInfo{};
-	allocationInfo.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
-	allocationInfo.usage = VMA_MEMORY_USAGE_CPU_ONLY;
-	VkBuffer staging = VK_NULL_HANDLE;
-	VmaAllocation allocation = VK_NULL_HANDLE;
-	VmaAllocationInfo info{};
-	VkResult result = vmaCreateBuffer( m_allocator, &bufferInfo, &allocationInfo, &staging, &allocation, &info );
-	if( result != VK_SUCCESS )
+	StagingBuffer staging;
+	if( !CreateStagingBuffer( size, false, staging ) )
 	{
-		CCP_AL_LOGERR( "Vulkan: staging buffer of %llu bytes failed: %s", (unsigned long long)size, VkResultToString( result ) );
 		return false;
 	}
-	memcpy( info.pMappedData, data, size_t( size ) );
-	vmaFlushAllocation( m_allocator, allocation, 0, VK_WHOLE_SIZE );
+	memcpy( staging.mapped, data, size_t( size ) );
+	vmaFlushAllocation( m_allocator, staging.allocation, 0, VK_WHOLE_SIZE );
 
 	VkCommandBuffer commandBuffer = GetCommandBuffer();
 	RecordFullBarrier();
 	VkBufferCopy region{ 0, offset, size };
-	vkCmdCopyBuffer( commandBuffer, staging, dst, 1, &region );
+	vkCmdCopyBuffer( commandBuffer, staging.buffer, dst, 1, &region );
 	RecordFullBarrier();
 
-	VmaAllocator allocator = m_allocator;
-	ReleaseLater( [allocator, staging, allocation] { vmaDestroyBuffer( allocator, staging, allocation ); } );
+	ReleaseStagingBuffer( staging );
 	return true;
 }
 

@@ -5,6 +5,7 @@
 #if ( TRINITY_PLATFORM == TRINITY_VULKAN )
 
 #include "VulkanIncludes.h"
+#include "../Tr2RenderContextEnum.h"
 
 #include <functional>
 #include <memory>
@@ -115,6 +116,21 @@ public:
 	// everything recorded later (a full memory barrier on each side). The staging buffer is released later.
 	bool UploadToBuffer( VkBuffer dst, VkDeviceSize offset, const void* data, VkDeviceSize size );
 
+	// A persistently mapped host buffer for transfers: write-combined for uploads, cached for readbacks.
+	struct StagingBuffer
+	{
+		VkBuffer buffer = VK_NULL_HANDLE;
+		VmaAllocation allocation = VK_NULL_HANDLE;
+		void* mapped = nullptr;
+	};
+	bool CreateStagingBuffer( VkDeviceSize size, bool readback, StagingBuffer& staging );
+	// Destroys the buffer once the GPU is done with it (ReleaseLater) and clears the handle.
+	void ReleaseStagingBuffer( StagingBuffer& staging );
+
+	// The Vulkan format images of a trinity format are created with on this device. Usually ToVkFormat(); depth formats
+	// the device cannot render to fall back to one it can (D24S8 -> D32S8, as AMD hardware has no D24).
+	VkFormat GetImageFormat( Tr2RenderContextEnum::PixelFormat format ) const;
+
 	// A full pipeline/memory barrier in the current command buffer: every earlier write is visible to every later
 	// access. Coarse; used until per-resource state tracking lands.
 	void RecordFullBarrier();
@@ -147,6 +163,7 @@ private:
 
 	VulkanAdapter m_adapter;
 	VkPhysicalDeviceFeatures m_features{};
+	bool m_hasD24S8 = true;
 	VkDevice m_device = VK_NULL_HANDLE;
 	VkQueue m_queue = VK_NULL_HANDLE;
 	VmaAllocator m_allocator = VK_NULL_HANDLE;

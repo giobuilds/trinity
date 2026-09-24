@@ -68,13 +68,19 @@ ALResult Tr2BufferAL::Create(
 	{
 		return E_INVALIDARG;
 	}
-	if( !HasFlag( desc.cpuUsage, Tr2CpuUsage::WRITE ) && !initialData )
-	{
-		return E_INVALIDARG;
-	}
 	if( !renderContext.IsValid() )
 	{
 		return E_INVALIDCALL;
+	}
+	// Immutable (neither CPU- nor GPU-writable) buffers need their contents up front, as on D3D12.
+	const bool immutable = !HasFlag( desc.cpuUsage, Tr2CpuUsage::WRITE ) && !HasFlag( desc.gpuUsage, Tr2GpuUsage::UNORDERED_ACCESS );
+	if( immutable && !initialData )
+	{
+		return E_INVALIDARG;
+	}
+	if( HasFlag( desc.cpuUsage, Tr2CpuUsage::READ ) && HasFlag( desc.cpuUsage, Tr2CpuUsage::WRITE_OFTEN ) )
+	{
+		return E_INVALIDARG;
 	}
 
 	m_device = renderContext.GetVulkanDeviceShared();
@@ -124,6 +130,18 @@ ALResult Tr2BufferAL::Create(
 			Destroy();
 			return E_OUTOFMEMORY;
 		}
+	}
+	else if( m_mapped )
+	{
+		memset( m_mapped, 0, size_t( GetByteSize() ) );
+		vmaFlushAllocation( m_device->GetAllocator(), m_allocation, 0, VK_WHOLE_SIZE );
+	}
+	else
+	{
+		// Start from zeros, as D3D12 committed resources do.
+		m_device->RecordFullBarrier();
+		vkCmdFillBuffer( m_device->GetCommandBuffer(), m_vkBuffer, 0, VK_WHOLE_SIZE, 0 );
+		m_device->RecordFullBarrier();
 	}
 	return S_OK;
 }
