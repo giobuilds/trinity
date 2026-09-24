@@ -9,6 +9,7 @@
 #include "ALLog.h"
 #include "Tr2AdapterStructures.h"
 #include "VulkanDevice.h"
+#include "Tr2BufferALVulkan.h"
 
 
 CCP_STATS_DECLARE( vertexCount, "Trinity/AL/vertexCount", true, CST_COUNTER_HIGH, "Vertex count in DrawPrimitive calls." );
@@ -104,9 +105,27 @@ ALResult Tr2RenderContextAL::ClearUav( const Tr2BufferAL&, const uint32_t[4] ) t
 	return E_FAIL;
 }
 
-ALResult Tr2RenderContextAL::CopySubBuffer( Tr2BufferAL&, uint32_t, Tr2BufferAL&, uint32_t, uint32_t )
+ALResult Tr2RenderContextAL::CopySubBuffer( Tr2BufferAL& dest, uint32_t destOffset, Tr2BufferAL& src, uint32_t offset, uint32_t length )
 {
-	return E_FAIL;
+	if( !m_device || !dest.IsValid() || !src.IsValid() )
+	{
+		return E_INVALIDARG;
+	}
+	auto destBuffer = dest.m_buffer.get();
+	auto srcBuffer = src.m_buffer.get();
+	if( VkDeviceSize( destOffset ) + length > destBuffer->GetByteSize() || VkDeviceSize( offset ) + length > srcBuffer->GetByteSize() )
+	{
+		return E_INVALIDARG;
+	}
+	if( length == 0 )
+	{
+		return S_OK;
+	}
+	m_device->RecordFullBarrier();
+	VkBufferCopy region{ offset, destOffset, length };
+	vkCmdCopyBuffer( m_device->GetCommandBuffer(), srcBuffer->GetVkBuffer(), destBuffer->GetVkBuffer(), 1, &region );
+	m_device->RecordFullBarrier();
+	return S_OK;
 }
 
 ALResult Tr2RenderContextAL::Clear(

@@ -111,6 +111,21 @@ public:
 	// implies every earlier frame has too.
 	void ReleaseLater( std::function<void()> release );
 
+	// Records a staging copy of data into dst at offset, ordered after everything recorded so far and before
+	// everything recorded later (a full memory barrier on each side). The staging buffer is released later.
+	bool UploadToBuffer( VkBuffer dst, VkDeviceSize offset, const void* data, VkDeviceSize size );
+
+	// A full pipeline/memory barrier in the current command buffer: every earlier write is visible to every later
+	// access. Coarse; used until per-resource state tracking lands.
+	void RecordFullBarrier();
+
+	// Make the GPU's writes visible to the CPU and ensure the GPU no longer reads memory the CPU is about to write:
+	// submit what is recorded and wait for all submitted work.
+	void SynchronizeForCpuAccess();
+
+	// Debug name for validation messages and tools (only with the debug-utils extension, i.e. validation enabled).
+	void SetObjectName( VkObjectType type, uint64_t handle, const char* name );
+
 	uint64_t GetSubmittedFrameCount() const
 	{
 		return m_submittedFrames;

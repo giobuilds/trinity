@@ -7,6 +7,7 @@
 #include "Tr2ConstantBufferALVulkan.h"
 #include "ALLog.h"
 #include "Tr2RenderContextVulkan.h"
+#include "VulkanDevice.h"
 
 namespace TrinityALImpl
 {
@@ -16,16 +17,15 @@ Tr2ConstantBufferAL::Tr2ConstantBufferAL()
 
 ALResult Tr2ConstantBufferAL::Create( uint32_t size, Tr2ConstantUsageAL::Type usage, const void* initialData, Tr2RenderContextAL& renderContext )
 {
+	Destroy();
 	if( !renderContext.IsValid() )
 	{
 		return E_INVALIDARG;
 	}
-
-	if( size == 0 )
+	if( size == 0 || size > renderContext.GetVulkanDevice()->GetAdapter().properties.limits.maxUniformBufferRange )
 	{
 		return E_INVALIDARG;
 	}
-
 	if( ( usage == Tr2ConstantUsageAL::IMMUTABLE ) && !initialData )
 	{
 		CCP_AL_LOGERR( "Create: Trying to create an immutable buffer without providing data" );
@@ -37,24 +37,35 @@ ALResult Tr2ConstantBufferAL::Create( uint32_t size, Tr2ConstantUsageAL::Type us
 	{
 		return E_OUTOFMEMORY;
 	}
-
+	if( initialData )
+	{
+		memcpy( m_shadowCopy.get(), initialData, size );
+	}
+	m_usage = usage;
+	++m_version;
 	return S_OK;
 }
 
 ALResult Tr2ConstantBufferAL::Lock( void** data, Tr2RenderContextAL& /*renderContext*/ )
 {
-	if( m_shadowCopy.empty() )
+	if( m_shadowCopy.empty() || m_usage == Tr2ConstantUsageAL::IMMUTABLE )
 	{
 		*data = nullptr;
 		return E_FAIL;
 	}
-
+	m_locked = true;
 	*data = m_shadowCopy.get();
 	return S_OK;
 }
 
 ALResult Tr2ConstantBufferAL::Unlock( Tr2RenderContextAL& /*renderContext*/ )
 {
+	if( !m_locked )
+	{
+		return E_FAIL;
+	}
+	m_locked = false;
+	++m_version;
 	return S_OK;
 }
 
@@ -66,6 +77,7 @@ bool Tr2ConstantBufferAL::IsValid() const
 void Tr2ConstantBufferAL::Destroy()
 {
 	m_shadowCopy.clear();
+	m_locked = false;
 }
 
 uint32_t Tr2ConstantBufferAL::GetSize() const

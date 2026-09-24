@@ -235,3 +235,34 @@ TEST_F( Buffer, CanCreateWritableShaderResourceBuffer )
 
 
 #endif
+
+#if TRINITY_PLATFORM == TRINITY_VULKAN
+// GPU-only buffers get their initial data through a staging copy; copying one into a readable buffer checks that
+// path end to end. (Other backends need particular resource states for copies, so this stays Vulkan-only.)
+TEST_F( Buffer, GpuOnlyBufferInitialDataCanBeCopiedBack )
+{
+	ENSURE_GPU_OR_SKIP
+	uint32_t data[64];
+	for( uint32_t i = 0; i < 64; ++i )
+	{
+		data[i] = 0x01000000u * i + 0x1234u;
+	}
+	Tr2BufferAL gpuOnly;
+	ASSERT_HRESULT_SUCCEEDED( gpuOnly.Create( sizeof( uint32_t ), 64, Tr2GpuUsage::SHADER_RESOURCE, Tr2CpuUsage::NONE, data, *renderContext ) );
+
+	uint32_t zeros[64] = {};
+	Tr2BufferAL readback;
+	ASSERT_HRESULT_SUCCEEDED( readback.Create( sizeof( uint32_t ), 64, Tr2GpuUsage::SHADER_RESOURCE, Tr2CpuUsage::READ, zeros, *renderContext ) );
+
+	ASSERT_HRESULT_SUCCEEDED( renderContext->CopySubBuffer( readback, 16, gpuOnly, 0, 32 * sizeof( uint32_t ) ) );
+
+	const uint32_t* result = nullptr;
+	ASSERT_HRESULT_SUCCEEDED( readback.MapForReading( result, *renderContext ) );
+	for( uint32_t i = 0; i < 64; ++i )
+	{
+		uint32_t expected = ( i >= 4 && i < 36 ) ? data[i - 4] : 0u;
+		EXPECT_EQ( expected, result[i] ) << "element " << i;
+	}
+	readback.UnmapForReading( *renderContext );
+}
+#endif

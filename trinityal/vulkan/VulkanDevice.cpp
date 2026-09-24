@@ -611,6 +611,89 @@ void VulkanDevice::ReleaseLater( std::function<void()> release )
 	m_pendingReleases.push_back( std::move( release ) );
 }
 
+bool VulkanDevice::UploadToBuffer( VkBuffer dst, VkDeviceSize offset, const void* data, VkDeviceSize size )
+{
+	if( size == 0 )
+	{
+		return true;
+	}
+	VkBufferCreateInfo bufferInfo{ VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
+	bufferInfo.size = size;
+	bufferInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+	VmaAllocationCreateInfo allocationInfo{};
+	allocationInfo.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
+	allocationInfo.usage = VMA_MEMORY_USAGE_CPU_ONLY;
+	VkBuffer staging = VK_NULL_HANDLE;
+	VmaAllocation allocation = VK_NULL_HANDLE;
+	VmaAllocationInfo info{};
+	VkResult result = vmaCreateBuffer( m_allocator, &bufferInfo, &allocationInfo, &staging, &allocation, &info );
+	if( result != VK_SUCCESS )
+	{
+		CCP_AL_LOGERR( "Vulkan: staging buffer of %llu bytes failed: %s", (unsigned long long)size, VkResultToString( result ) );
+		return false;
+	}
+	memcpy( info.pMappedData, data, size_t( size ) );
+	vmaFlushAllocation( m_allocator, allocation, 0, VK_WHOLE_SIZE );
+
+	VkCommandBuffer commandBuffer = GetCommandBuffer();
+	RecordFullBarrier();
+	VkBufferCopy region{ 0, offset, size };
+	vkCmdCopyBuffer( commandBuffer, staging, dst, 1, &region );
+	RecordFullBarrier();
+
+	VmaAllocator allocator = m_allocator;
+	ReleaseLater( [allocator, staging, allocation] { vmaDestroyBuffer( allocator, staging, allocation ); } );
+	return true;
+}
+
+void VulkanDevice::RecordFullBarrier()
+{
+	VkMemoryBarrier2 barrier{ VK_STRUCTURE_TYPE_MEMORY_BARRIER_2 };
+	barrier.srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+	barrier.srcAccessMask = VK_ACCESS_2_MEMORY_WRITE_BIT;
+	barrier.dstStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+	barrier.dstAccessMask = VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT;
+	VkDependencyInfo dependency{ VK_STRUCTURE_TYPE_DEPENDENCY_INFO };
+	dependency.memoryBarrierCount = 1;
+	dependency.pMemoryBarriers = &barrier;
+	vkCmdPipelineBarrier2( GetCommandBuffer(), &dependency );
+}
+
+void VulkanDevice::SynchronizeForCpuAccess()
+{
+	if( m_recording )
+	{
+		// Make device writes available to the host before the fence signals.
+		VkMemoryBarrier2 barrier{ VK_STRUCTURE_TYPE_MEMORY_BARRIER_2 };
+		barrier.srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+		barrier.srcAccessMask = VK_ACCESS_2_MEMORY_WRITE_BIT;
+		barrier.dstStageMask = VK_PIPELINE_STAGE_2_HOST_BIT;
+		barrier.dstAccessMask = VK_ACCESS_2_HOST_READ_BIT | VK_ACCESS_2_HOST_WRITE_BIT;
+		VkDependencyInfo dependency{ VK_STRUCTURE_TYPE_DEPENDENCY_INFO };
+		dependency.memoryBarrierCount = 1;
+		dependency.pMemoryBarriers = &barrier;
+		vkCmdPipelineBarrier2( m_frames[m_frameIndex].commandBuffer, &dependency );
+		Submit();
+	}
+	for( uint32_t i = 0; i < FRAMES_IN_FLIGHT; ++i )
+	{
+		WaitForFrame( i );
+	}
+}
+
+void VulkanDevice::SetObjectName( VkObjectType type, uint64_t handle, const char* name )
+{
+	if( !name || !VulkanInstance::Get()->ValidationEnabled() )
+	{
+		return;
+	}
+	VkDebugUtilsObjectNameInfoEXT info{ VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT };
+	info.objectType = type;
+	info.objectHandle = handle;
+	info.pObjectName = name;
+	vkSetDebugUtilsObjectNameEXT( m_device, &info );
+}
+
 } // namespace TrinityALImpl
 
 #endif

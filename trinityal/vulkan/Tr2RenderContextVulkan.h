@@ -253,6 +253,11 @@ public:
 	{
 		return m_device.get();
 	}
+	// Resources keep the device alive until they are destroyed.
+	const std::shared_ptr<TrinityALImpl::VulkanDevice>& GetVulkanDeviceShared() const
+	{
+		return m_device;
+	}
 	Tr2TextureAL& GetDefaultBackBuffer()
 	{
 		return m_defaultBackBuffer;
