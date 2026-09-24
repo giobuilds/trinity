@@ -355,6 +355,12 @@ set(_SOURCES
     vulkan/Tr2VertexLayoutALVulkan.h
     vulkan/Tr2VideoAdapterInfoALVulkan.cpp
     vulkan/Tr2VideoAdapterInfoALVulkan.h
+    vulkan/VmaImplementation.cpp
+    vulkan/VulkanDevice.cpp
+    vulkan/VulkanDevice.h
+    vulkan/VulkanFormats.cpp
+    vulkan/VulkanFormats.h
+    vulkan/VulkanIncludes.h
     vulkan/upscaling/Tr2UpscalingALVulkan.cpp
     vulkan/upscaling/Tr2UpscalingALVulkan.h
 )

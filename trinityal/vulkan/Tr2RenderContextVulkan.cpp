@@ -8,6 +8,7 @@
 #include "ITr2RenderContextEvents.h"
 #include "ALLog.h"
 #include "Tr2AdapterStructures.h"
+#include "VulkanDevice.h"
 
 
 CCP_STATS_DECLARE( vertexCount, "Trinity/AL/vertexCount", true, CST_COUNTER_HIGH, "Vertex count in DrawPrimitive calls." );
@@ -41,6 +42,7 @@ Tr2RenderContextAL::Tr2RenderContextAL() :
 
 Tr2RenderContextAL::~Tr2RenderContextAL()
 {
+	Destroy();
 }
 
 void Tr2RenderContextAL::SetPrimaryRenderContext( Tr2PrimaryRenderContextAL* renderContext )
@@ -65,6 +67,13 @@ void Tr2RenderContextAL::Destroy()
 	{
 		m_boundRenderTarget[i] = Tr2TextureAL();
 	}
+	m_defaultBackBuffer = Tr2TextureAL();
+	if( m_device )
+	{
+		m_device->Submit();
+		m_device->WaitIdle();
+	}
+	m_device.reset();
 	m_isValid = false;
 }
 
@@ -232,8 +241,14 @@ ALResult Tr2RenderContextAL::CreateDevice(
 	Tr2WindowHandle,
 	const Tr2PresentParametersAL& presentationParameters )
 {
+	Destroy();
+	m_device = TrinityALImpl::VulkanDevice::Create( Adapter );
+	if( !m_device )
+	{
+		return E_FAIL;
+	}
 	m_isValid = true;
-	SetPresentParameters( Adapter, presentationParameters );
+	CR_RETURN_HR( SetPresentParameters( Adapter, presentationParameters ) );
 	if( m_events )
 	{
 		m_events->OnContextCreated( *this );
@@ -266,6 +281,11 @@ const Tr2CapsAL& Tr2RenderContextAL::GetCaps() const
 
 ALResult Tr2RenderContextAL::BeginScene()
 {
+	if( !m_device )
+	{
+		return E_FAIL;
+	}
+	m_device->GetCommandBuffer();
 	return S_OK;
 }
 
@@ -276,13 +296,22 @@ ALResult Tr2RenderContextAL::EndScene()
 
 ALResult Tr2RenderContextAL::Present()
 {
+	if( !m_device )
+	{
+		return E_FAIL;
+	}
+	// Offscreen until the swapchain exists (phase 3): presenting submits the frame's commands.
+	if( m_device->Submit() != VK_SUCCESS )
+	{
+		return E_FAIL;
+	}
 	++m_frameNumber;
 	return S_OK;
 }
 
 bool Tr2RenderContextAL::IsValid()
 {
-	return m_isValid;
+	return m_isValid && m_device;
 }
 
 ALResult Tr2RenderContextAL::SetVertexLayout( const Tr2VertexLayoutAL& )

@@ -6,114 +6,130 @@
 
 #include "Tr2VideoAdapterInfoALVulkan.h"
 #include "Tr2AdapterStructures.h"
+#include "VulkanDevice.h"
+#include "VulkanFormats.h"
 
 using namespace Tr2RenderContextEnum;
+using TrinityALImpl::VulkanInstance;
+
+namespace
+{
+
+const TrinityALImpl::VulkanAdapter* GetAdapter( unsigned index )
+{
+	VulkanInstance* instance = VulkanInstance::Get();
+	if( !instance || index >= instance->GetAdapters().size() )
+	{
+		return nullptr;
+	}
+	return &instance->GetAdapters()[index];
+}
+
+bool SupportsFormatFeatures( unsigned adapterIndex, PixelFormat format, VkFormatFeatureFlags features )
+{
+	auto adapter = GetAdapter( adapterIndex );
+	VkFormat vkFormat = TrinityALImpl::ToVkFormat( format );
+	if( !adapter || vkFormat == VK_FORMAT_UNDEFINED )
+	{
+		return false;
+	}
+	VkFormatProperties properties;
+	vkGetPhysicalDeviceFormatProperties( adapter->physicalDevice, vkFormat, &properties );
+	return ( properties.optimalTilingFeatures & features ) == features;
+}
+
+}
 
 ALResult Tr2VideoAdapterInfo::GetAdapterCount( unsigned& count )
 {
-	// Skeleton: no Vulkan device enumeration yet, so report no adapters and let GPU tests skip instead of passing
-	// against a backend that does nothing.
-	count = 0;
+	VulkanInstance* instance = VulkanInstance::Get();
+	count = instance ? unsigned( instance->GetAdapters().size() ) : 0;
 	return S_OK;
 }
 
-bool GetDeviceId( uint32_t& deviceId )
+ALResult Tr2VideoAdapterInfo::GetAdapterInfo( unsigned adapterIndex, Tr2AdapterInfo& info )
 {
-	deviceId = 0;
-	return true;
-}
-
-ALResult Tr2VideoAdapterInfo::GetAdapterInfo( unsigned,
-											  Tr2AdapterInfo& info )
-{
-
-
-
-	info.driver = "vulkan-skeleton";
-	info.description = L"Not an actual adapter.";
-	info.deviceName = "vulkan-skeleton";
-	info.driverVersion = 2533352100662421;
-	info.vendorID = 0;
-	GetDeviceId( info.deviceID );
-	info.subSystemID = 0;
-	info.revision = 163;
-	AdapterGuid id;
-	id.data1 = 0;
-	id.data2 = 0;
-	id.data3 = 0;
-	for( int i = 0; i < 8; i++ )
+	if( !GetAdapter( adapterIndex ) )
 	{
-		id.data4[i] = 0;
+		return E_INVALIDARG;
 	}
-	info.deviceIdentifier = id;
+	VulkanInstance::Get()->FillAdapterInfo( adapterIndex, info );
 	return S_OK;
 }
 
-ALResult Tr2VideoAdapterInfo::GetAdapterMonitor( unsigned,
-												 void*& )
+ALResult Tr2VideoAdapterInfo::GetAdapterMonitor( unsigned adapterIndex, void*& monitor )
 {
-	return S_OK;
+	// Monitors come from the window system (SDL3, phase 3); Vulkan adapters are not tied to one.
+	monitor = nullptr;
+	return GetAdapter( adapterIndex ) ? S_OK : E_INVALIDARG;
 }
 
-ALResult Tr2VideoAdapterInfo::GetAdapterDisplayMode( unsigned,
-													 Tr2DisplayModeInfo& mode )
+// Display modes need the window system (SDL3 display enumeration, phase 3). Until then every adapter reports one
+// 1920x1080 desktop mode.
+ALResult Tr2VideoAdapterInfo::GetAdapterDisplayMode( unsigned adapterIndex, Tr2DisplayModeInfo& mode )
 {
+	if( !GetAdapter( adapterIndex ) )
+	{
+		return E_INVALIDARG;
+	}
 	mode.format = PIXEL_FORMAT_B8G8R8A8_UNORM;
-	mode.width = 800;
-	mode.height = 600;
-	mode.refreshRateDenominator = 1;
-	mode.refreshRateNumerator = 1;
-	mode.scaling = DISPLAY_SCALING_UNSPECIFIED;
-	mode.scanlineOrdering = SCANLINE_ORDER_UNSPECIFIED;
-	return S_OK;
-}
-
-ALResult Tr2VideoAdapterInfo::GetAdapterModeCount( unsigned,
-												   Tr2RenderContextEnum::PixelFormat,
-												   unsigned& count )
-{
-	count = 1;
-	return S_OK;
-}
-
-ALResult Tr2VideoAdapterInfo::GetAdapterMode( unsigned,
-											  Tr2RenderContextEnum::PixelFormat,
-											  unsigned,
-											  Tr2DisplayModeInfo& mode )
-{
-	mode.format = PIXEL_FORMAT_B8G8R8X8_UNORM;
-	mode.height = 1200;
-	mode.refreshRateDenominator = 59;
-	mode.refreshRateNumerator = 1;
-	mode.scaling = DISPLAY_SCALING_UNSPECIFIED;
-	mode.scanlineOrdering = SCANLINE_ORDER_UNSPECIFIED;
 	mode.width = 1920;
-
+	mode.height = 1080;
+	mode.refreshRateNumerator = 60;
+	mode.refreshRateDenominator = 1;
+	mode.scaling = DISPLAY_SCALING_UNSPECIFIED;
+	mode.scanlineOrdering = SCANLINE_ORDER_UNSPECIFIED;
 	return S_OK;
 }
 
-ALResult Tr2VideoAdapterInfo::GetAdapterMaxTextureWidth( unsigned,
-														 unsigned& maxWidth )
+ALResult Tr2VideoAdapterInfo::GetAdapterModeCount( unsigned adapterIndex, Tr2RenderContextEnum::PixelFormat backBufferFormat, unsigned& count )
 {
-	maxWidth = 16384;
+	count = SupportsBackBufferFormat( adapterIndex, backBufferFormat ) ? 1 : 0;
+	return GetAdapter( adapterIndex ) ? S_OK : E_INVALIDARG;
+}
+
+ALResult Tr2VideoAdapterInfo::GetAdapterMode( unsigned adapterIndex, Tr2RenderContextEnum::PixelFormat backBufferFormat, unsigned modeIndex, Tr2DisplayModeInfo& mode )
+{
+	if( modeIndex != 0 || !SupportsBackBufferFormat( adapterIndex, backBufferFormat ) )
+	{
+		return E_INVALIDARG;
+	}
+	CR_RETURN_HR( GetAdapterDisplayMode( adapterIndex, mode ) );
+	mode.format = backBufferFormat;
 	return S_OK;
 }
 
-bool Tr2VideoAdapterInfo::SupportsBackBufferFormat( unsigned,
-													Tr2RenderContextEnum::PixelFormat )
+ALResult Tr2VideoAdapterInfo::GetAdapterMaxTextureWidth( unsigned adapterIndex, unsigned& maxWidth )
 {
-	return true;
+	auto adapter = GetAdapter( adapterIndex );
+	if( !adapter )
+	{
+		return E_INVALIDARG;
+	}
+	maxWidth = adapter->properties.limits.maxImageDimension2D;
+	return S_OK;
 }
 
-bool Tr2VideoAdapterInfo::SupportsRenderTargetFormat( unsigned, Tr2RenderContextEnum::PixelFormat )
+bool Tr2VideoAdapterInfo::SupportsBackBufferFormat( unsigned adapterIndex, Tr2RenderContextEnum::PixelFormat backBufferFormat )
 {
-	return true;
+	// Presentation support is a surface query (phase 3); here: usable as a blendable colour attachment.
+	return SupportsFormatFeatures( adapterIndex, backBufferFormat, VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT | VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BLEND_BIT );
 }
 
-bool Tr2VideoAdapterInfo::AreAdaptersDifferent( unsigned adapter1,
-												unsigned adapter2 )
+bool Tr2VideoAdapterInfo::SupportsRenderTargetFormat( unsigned adapterIndex, Tr2RenderContextEnum::PixelFormat format )
 {
-	return adapter1 != adapter2;
+	return SupportsFormatFeatures( adapterIndex, format, TrinityALImpl::IsDepthFormat( format ) ? VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT : VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT );
+}
+
+bool Tr2VideoAdapterInfo::AreAdaptersDifferent( unsigned adapter1, unsigned adapter2 )
+{
+	auto a = GetAdapter( adapter1 );
+	auto b = GetAdapter( adapter2 );
+	if( !a || !b )
+	{
+		return adapter1 != adapter2;
+	}
+	return memcmp( a->idProperties.deviceUUID, b->idProperties.deviceUUID, VK_UUID_SIZE ) != 0;
 }
 
 ALResult Tr2VideoAdapterInfo::RefreshData()

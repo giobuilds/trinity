@@ -15,6 +15,11 @@
 #include "../Tr2HalHelperStructures.h"
 #include "../include/upscaling/Tr2UpscalingAL.h"
 
+namespace TrinityALImpl
+{
+class VulkanDevice;
+}
+
 class Tr2ConstantBufferAL;
 class Tr2VertexLayoutAL;
 class Tr2ShaderAL;
@@ -242,6 +247,12 @@ public:
 	Tr2CapsAL m_caps;
 
 	ITr2RenderContextEvents* m_events;
+
+	// The Vulkan device this context records into; null until CreateDevice succeeds.
+	TrinityALImpl::VulkanDevice* GetVulkanDevice() const
+	{
+		return m_device.get();
+	}
 	Tr2TextureAL& GetDefaultBackBuffer()
 	{
 		return m_defaultBackBuffer;
@@ -288,6 +299,7 @@ private:
 	Tr2Viewport m_viewport;
 	TrackableStdStack<Tr2TextureAL> m_stackRT[MAX_RENDER_TARGET];
 	uint64_t m_frameNumber;
+	std::shared_ptr<TrinityALImpl::VulkanDevice> m_device;
 
 public:
 	TrinityALImpl::Tr2SamplerStateALFactory m_samplerStateFactory;

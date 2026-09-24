@@ -8,7 +8,9 @@
 #define VMA_DYNAMIC_VULKAN_FUNCTIONS 0
 #define VMA_VULKAN_VERSION 1000000
 #define VMA_STATS_STRING_ENABLED 0
+#if TRINITY_PLATFORM != TRINITY_VULKAN // the Vulkan backend compiles VMA itself (trinityal/vulkan/VmaImplementation.cpp)
 #define VMA_IMPLEMENTATION
+#endif
 #include "vk_mem_alloc.h"
 
 Tr2VirtualAllocator::Tr2VirtualAllocator( size_t blockSize, size_t maxSize, size_t initialSize ) :
