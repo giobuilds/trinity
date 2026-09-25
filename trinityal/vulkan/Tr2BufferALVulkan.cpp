@@ -7,6 +7,7 @@
 #include "Tr2BufferALVulkan.h"
 #include "Tr2RenderContextVulkan.h"
 #include "VulkanDevice.h"
+#include "VulkanFormats.h"
 #include "ALLog.h"
 
 namespace
@@ -31,14 +32,15 @@ VkBufferUsageFlags UsageFlags( const Tr2BufferDescriptionAL& desc )
 	{
 		usage |= VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
 	}
+	// Shaders see a buffer as typed (Buffer<T>: texel buffer) or structured/raw (storage buffer), whatever it was
+	// created as, so a typed buffer gets both.
 	if( HasFlag( desc.gpuUsage, Tr2GpuUsage::SHADER_RESOURCE ) )
 	{
-		// Typed SRV -> uniform texel buffer (Buffer<T>); structured/raw -> storage buffer.
-		usage |= typed ? VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT : VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+		usage |= VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | ( typed ? VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT : 0 );
 	}
 	if( HasFlag( desc.gpuUsage, Tr2GpuUsage::UNORDERED_ACCESS ) )
 	{
-		usage |= typed ? VK_BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT : VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+		usage |= VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | ( typed ? VK_BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT : 0 );
 	}
 	if( HasFlag( desc.gpuUsage, Tr2GpuUsage::DRAW_INDIRECT_ARGS ) )
 	{
@@ -148,6 +150,13 @@ ALResult Tr2BufferAL::Create(
 
 void Tr2BufferAL::Destroy()
 {
+	if( m_texelView )
+	{
+		VkDevice device = m_device->GetHandle();
+		VkBufferView view = m_texelView;
+		m_device->ReleaseLater( [device, view] { vkDestroyBufferView( device, view, nullptr ); } );
+		m_texelView = VK_NULL_HANDLE;
+	}
 	if( m_vkBuffer )
 	{
 		VmaAllocator allocator = m_device->GetAllocator();
@@ -255,6 +264,29 @@ ALResult Tr2BufferAL::UpdateBuffer( uint32_t offset, uint32_t size, const void* 
 	}
 	// Ordered with the command stream, like UpdateSubresource: earlier draws see the old contents.
 	return m_device->UploadToBuffer( m_vkBuffer, offset, data, size ) ? S_OK : E_OUTOFMEMORY;
+}
+
+VkBufferView Tr2BufferAL::GetTexelView()
+{
+	if( m_texelView || !m_vkBuffer || m_desc.format == Tr2RenderContextEnum::PIXEL_FORMAT_UNKNOWN )
+	{
+		return m_texelView;
+	}
+	VkBufferViewCreateInfo info{ VK_STRUCTURE_TYPE_BUFFER_VIEW_CREATE_INFO };
+	info.buffer = m_vkBuffer;
+	info.format = ToVkFormat( m_desc.format );
+	info.range = VK_WHOLE_SIZE;
+	if( info.format == VK_FORMAT_UNDEFINED )
+	{
+		return VK_NULL_HANDLE;
+	}
+	VkResult result = vkCreateBufferView( m_device->GetHandle(), &info, nullptr, &m_texelView );
+	if( result != VK_SUCCESS )
+	{
+		CCP_AL_LOGERR( "Vulkan: vkCreateBufferView failed: %s", VkResultToString( result ) );
+		m_texelView = VK_NULL_HANDLE;
+	}
+	return m_texelView;
 }
 
 uint32_t Tr2BufferAL::GetSrvIndexInHeap() const

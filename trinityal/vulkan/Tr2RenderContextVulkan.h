@@ -14,6 +14,15 @@
 #include "../include/Tr2RtTopLevelAccelerationStructureAL.h"
 #include "../Tr2HalHelperStructures.h"
 #include "../include/upscaling/Tr2UpscalingAL.h"
+#include "../include/Tr2BufferAL.h"
+#include "../include/Tr2ConstantBufferAL.h"
+#include "../include/Tr2ResourceSetAL.h"
+#include "../include/Tr2ShaderProgramAL.h"
+#include "../include/Tr2VertexLayoutAL.h"
+#include "VulkanIncludes.h"
+#include "VulkanPipelineState.h"
+
+#include <unordered_map>
 
 namespace TrinityALImpl
 {
@@ -106,15 +115,8 @@ public:
 	ALResult SetShaderProgram( const Tr2ShaderProgramAL& shaderProgram );
 
 
-	ALResult ClearUav( const Tr2TextureAL&, uint32_t, const float[4] ) throw()
-	{
-		return E_FAIL;
-	}
-
-	ALResult ClearUav( const Tr2TextureAL&, uint32_t, const uint32_t[4] ) throw()
-	{
-		return E_FAIL;
-	}
+	ALResult ClearUav( const Tr2TextureAL& texture, uint32_t mip, const float values[4] ) throw();
+	ALResult ClearUav( const Tr2TextureAL& texture, uint32_t mip, const uint32_t values[4] ) throw();
 
 	ALResult SetResourceSet( const Tr2ResourceSetAL& resourceSet );
 
@@ -163,24 +165,11 @@ public:
 		const void* vertexStreamZeroData,
 		uint32_t vertexStreamZeroStride );
 
-	ALResult DrawIndexedInstancedIndirect( Tr2BufferAL&, uint32_t )
-	{
-		return E_FAIL;
-	}
+	ALResult DrawIndexedInstancedIndirect( Tr2BufferAL& params, uint32_t offset );
+	ALResult DrawInstancedIndirect( Tr2BufferAL& params, uint32_t offset );
 
-	ALResult DrawInstancedIndirect( Tr2BufferAL&, uint32_t )
-	{
-		return E_FAIL;
-	}
-
-	ALResult RunComputeShader( unsigned, unsigned, unsigned )
-	{
-		return E_FAIL;
-	}
-	ALResult RunComputeShaderIndirect( Tr2BufferAL&, unsigned )
-	{
-		return E_FAIL;
-	}
+	ALResult RunComputeShader( unsigned groupDimX, unsigned groupDimY, unsigned groupDimZ );
+	ALResult RunComputeShaderIndirect( Tr2BufferAL& params, unsigned offset );
 
 	ALResult DispatchRays( Tr2RtPipelineStateAL& pipeline, Tr2RtShaderTableAL& shaderTable, const wchar_t* rayGenShader, uint32_t width, uint32_t height, uint32_t depth )
 	{
@@ -296,15 +285,78 @@ public:
 private:
 	enum
 	{
-		MAX_RENDER_TARGET = 8
+		MAX_RENDER_TARGET = 8,
+		MAX_VERTEX_STREAMS = 4,
+		MAX_CONSTANT_REGISTERS = 32,
 	};
+
+	struct RenderTargetBinding
+	{
+		Tr2TextureAL texture;
+		uint32_t slice = 0;
+	};
+	struct VertexStream
+	{
+		Tr2BufferAL buffer;
+		uint32_t offset = 0;
+		uint32_t stride = 0;
+	};
+
+	// Recording helpers. Draws and clears run inside a dynamic-rendering scope that stays open until the attachments
+	// change or something outside a render pass has to be recorded (the device's rendering-end hook).
+	void OnNewCommandBufferVulkan();
+	ALResult BeginRenderingVulkan();
+	void EndRenderingVulkan( bool barrier );
+	ALResult PrepareDrawVulkan( bool indexed );
+	bool WriteDescriptorsVulkan( VkPipelineBindPoint bindPoint );
+	bool DescriptorsChangedVulkan() const;
+	uint32_t PrimitiveVertexCount( uint32_t primitiveCount ) const;
+	ALResult DrawUPVulkan( uint32_t vertexCount, uint32_t vertexDataSize, const void* vertexData, uint32_t stride, const void* indexData, uint32_t indexCount, VkIndexType indexType );
+	ALResult ClearUavVulkan( const Tr2TextureAL& texture, uint32_t mip, const VkClearColorValue& value );
+
 	Tr2TextureAL m_boundRenderTarget[MAX_RENDER_TARGET];
+	uint32_t m_boundSlice[MAX_RENDER_TARGET];
+	Tr2TextureAL m_boundDepthStencil;
 	bool m_isValid;
 	Tr2TextureAL m_defaultBackBuffer;
 	Tr2Viewport m_viewport;
-	TrackableStdStack<Tr2TextureAL> m_stackRT[MAX_RENDER_TARGET];
+	TrackableStdStack<RenderTargetBinding> m_stackRT[MAX_RENDER_TARGET];
+	TrackableStdStack<Tr2TextureAL> m_stackDS;
 	uint64_t m_frameNumber;
 	std::shared_ptr<TrinityALImpl::VulkanDevice> m_device;
+
+	// Draw state
+	VertexStream m_streams[MAX_VERTEX_STREAMS];
+	Tr2BufferAL m_indexBuffer;
+	VkIndexType m_indexType;
+	Tr2VertexLayoutAL m_vertexLayout;
+	Tr2ShaderProgramAL m_program;
+	Tr2ResourceSetAL m_resourceSet;
+	Tr2ConstantBufferAL m_constants[Tr2RenderContextEnum::SHADER_TYPE_COUNT][MAX_CONSTANT_REGISTERS];
+	uint32_t m_topology;
+	TrinityALImpl::GraphicsPipelineState m_pipelineState; // render states; attachments are filled in per draw
+	bool m_separateAlphaBlend;
+	bool m_srgbWrite;
+	bool m_readOnlyDepth;
+	uint32_t m_stencilRef;
+	float m_blendFactor[4];
+
+	// Recording state
+	uint64_t m_commandBufferSerial; // device submit count the bound state below belongs to
+	bool m_rendering;
+	VkExtent2D m_renderExtent;
+	VkPipeline m_boundPipeline;
+	bool m_descriptorsDirty;
+	bool m_passWritesUavs; // a draw in the open pass used UAVs; the next resource change needs a barrier
+	std::vector<uint64_t> m_boundConstantVersions; // per constant-buffer binding of the program, at the last write
+	struct ConstantUpload
+	{
+		uint64_t version;
+		VkBuffer buffer;
+		VkDeviceSize offset;
+	};
+	std::unordered_map<const void*, ConstantUpload> m_constantUploads; // this command buffer's copies
+	VkSampler m_defaultSampler;
 
 public:
 	TrinityALImpl::Tr2SamplerStateALFactory m_samplerStateFactory;

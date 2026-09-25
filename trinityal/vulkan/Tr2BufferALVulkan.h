@@ -61,8 +61,12 @@ public:
 		return VkDeviceSize( m_desc.count ) * m_desc.stride;
 	}
 
+	// The buffer seen as Buffer<T>/RWBuffer<T> with its format; created on first use. VK_NULL_HANDLE for untyped buffers.
+	VkBufferView GetTexelView();
+
 private:
 	std::shared_ptr<VulkanDevice> m_device;
+	VkBufferView m_texelView = VK_NULL_HANDLE;
 	VkBuffer m_vkBuffer = VK_NULL_HANDLE;
 	VmaAllocation m_allocation = VK_NULL_HANDLE;
 	void* m_mapped = nullptr;

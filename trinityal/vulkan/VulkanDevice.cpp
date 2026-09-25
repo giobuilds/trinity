@@ -385,6 +385,10 @@ bool VulkanDevice::Initialize( uint32_t adapterIndex )
 	m_features.fragmentStoresAndAtomics = available.fragmentStoresAndAtomics;
 	m_features.vertexPipelineStoresAndAtomics = available.vertexPipelineStoresAndAtomics;
 	m_features.shaderStorageImageWriteWithoutFormat = available.shaderStorageImageWriteWithoutFormat;
+	m_features.shaderStorageImageReadWithoutFormat = available.shaderStorageImageReadWithoutFormat;
+	m_features.shaderImageGatherExtended = available.shaderImageGatherExtended;
+	m_features.sampleRateShading = available.sampleRateShading;
+	m_features.dualSrcBlend = available.dualSrcBlend;
 	m_features.occlusionQueryPrecise = available.occlusionQueryPrecise;
 	m_features.pipelineStatisticsQuery = available.pipelineStatisticsQuery;
 	m_features.multiDrawIndirect = available.multiDrawIndirect;
@@ -398,9 +402,46 @@ bool VulkanDevice::Initialize( uint32_t adapterIndex )
 	features12.pNext = &features13;
 	features12.timelineSemaphore = VK_TRUE;
 	features12.hostQueryReset = VK_TRUE;
+	{
+		VkPhysicalDeviceVulkan12Features available12{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES };
+		VkPhysicalDeviceFeatures2 query{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2 };
+		query.pNext = &available12;
+		vkGetPhysicalDeviceFeatures2( m_adapter.physicalDevice, &query );
+		features12.samplerMirrorClampToEdge = available12.samplerMirrorClampToEdge; // TA_MIRROR_ONCE
+	}
 	VkPhysicalDeviceFeatures2 features2{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2 };
 	features2.pNext = &features12;
 	features2.features = m_features;
+
+	// Null descriptors (VK_EXT_robustness2) let unbound resource slots read zero, as unbound D3D slots do.
+	std::vector<const char*> extensions;
+	uint32_t extensionCount = 0;
+	vkEnumerateDeviceExtensionProperties( m_adapter.physicalDevice, nullptr, &extensionCount, nullptr );
+	std::vector<VkExtensionProperties> availableExtensions( extensionCount );
+	vkEnumerateDeviceExtensionProperties( m_adapter.physicalDevice, nullptr, &extensionCount, availableExtensions.data() );
+	auto hasExtension = [&]( const char* name ) {
+		return std::any_of( availableExtensions.begin(), availableExtensions.end(), [name]( const VkExtensionProperties& p ) { return strcmp( p.extensionName, name ) == 0; } );
+	};
+	VkPhysicalDeviceRobustness2FeaturesEXT robustness2{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ROBUSTNESS_2_FEATURES_EXT };
+	if( hasExtension( VK_EXT_ROBUSTNESS_2_EXTENSION_NAME ) )
+	{
+		VkPhysicalDeviceRobustness2FeaturesEXT query{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ROBUSTNESS_2_FEATURES_EXT };
+		VkPhysicalDeviceFeatures2 queryFeatures{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2 };
+		queryFeatures.pNext = &query;
+		vkGetPhysicalDeviceFeatures2( m_adapter.physicalDevice, &queryFeatures );
+		if( query.nullDescriptor )
+		{
+			robustness2.nullDescriptor = VK_TRUE;
+			robustness2.pNext = features2.pNext;
+			features2.pNext = &robustness2;
+			extensions.push_back( VK_EXT_ROBUSTNESS_2_EXTENSION_NAME );
+			m_nullDescriptors = true;
+		}
+	}
+	if( !m_nullDescriptors )
+	{
+		CCP_AL_LOGWARN( "Vulkan: %s has no null descriptors; unbound resource slots are undefined", m_adapter.properties.deviceName );
+	}
 
 	float priority = 1.0f;
 	VkDeviceQueueCreateInfo queueInfo{ VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO };
@@ -412,6 +453,8 @@ bool VulkanDevice::Initialize( uint32_t adapterIndex )
 	createInfo.pNext = &features2;
 	createInfo.queueCreateInfoCount = 1;
 	createInfo.pQueueCreateInfos = &queueInfo;
+	createInfo.enabledExtensionCount = uint32_t( extensions.size() );
+	createInfo.ppEnabledExtensionNames = extensions.data();
 
 	VkResult result = vkCreateDevice( m_adapter.physicalDevice, &createInfo, nullptr, &m_device );
 	if( result != VK_SUCCESS )
@@ -481,6 +524,20 @@ bool VulkanDevice::Initialize( uint32_t adapterIndex )
 		}
 	}
 
+	{
+		VkBufferCreateInfo bufferInfo{ VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
+		bufferInfo.size = 64;
+		bufferInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+		VmaAllocationCreateInfo zeroInfo{};
+		zeroInfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
+		if( vmaCreateBuffer( m_allocator, &bufferInfo, &zeroInfo, &m_zeroBuffer, &m_zeroBufferAllocation, nullptr ) != VK_SUCCESS )
+		{
+			return false;
+		}
+		vkCmdFillBuffer( GetCommandBuffer(), m_zeroBuffer, 0, VK_WHOLE_SIZE, 0 );
+		RecordFullBarrier();
+	}
+
 	CCP_AL_LOG( "Vulkan: device created on %s", m_adapter.properties.deviceName );
 	if( const char* verbose = getenv( "CARBON_VULKAN_VERBOSE" ); verbose && atoi( verbose ) )
 	{
@@ -508,6 +565,14 @@ VulkanDevice::~VulkanDevice()
 	m_pendingReleases.clear();
 	for( auto& frame : m_frames )
 	{
+		for( auto& chunk : frame.uploadChunks )
+		{
+			vmaDestroyBuffer( m_allocator, chunk.buffer, chunk.allocation );
+		}
+		for( auto pool : frame.descriptorPools )
+		{
+			vkDestroyDescriptorPool( m_device, pool, nullptr );
+		}
 		if( frame.fence )
 		{
 			vkDestroyFence( m_device, frame.fence, nullptr );
@@ -516,6 +581,10 @@ VulkanDevice::~VulkanDevice()
 		{
 			vkDestroyCommandPool( m_device, frame.pool, nullptr );
 		}
+	}
+	if( m_zeroBuffer )
+	{
+		vmaDestroyBuffer( m_allocator, m_zeroBuffer, m_zeroBufferAllocation );
 	}
 	if( m_allocator )
 	{
@@ -546,6 +615,7 @@ VkCommandBuffer VulkanDevice::GetCommandBuffer()
 	{
 		WaitForFrame( m_frameIndex );
 		vkResetCommandPool( m_device, frame.pool, 0 );
+		ResetFrameAllocators( frame );
 		VkCommandBufferBeginInfo beginInfo{ VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
 		beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
 		vkBeginCommandBuffer( frame.commandBuffer, &beginInfo );
@@ -561,6 +631,8 @@ VkResult VulkanDevice::Submit()
 	{
 		return VK_SUCCESS;
 	}
+	EndRendering();
+	FlushUploads( frame );
 	m_recording = false;
 	VkResult result = vkEndCommandBuffer( frame.commandBuffer );
 	if( result != VK_SUCCESS )
@@ -690,8 +762,133 @@ bool VulkanDevice::UploadToBuffer( VkBuffer dst, VkDeviceSize offset, const void
 	return true;
 }
 
+void VulkanDevice::ResetFrameAllocators( Frame& frame )
+{
+	frame.uploadChunk = 0;
+	frame.uploadOffset = 0;
+	for( auto pool : frame.descriptorPools )
+	{
+		vkResetDescriptorPool( m_device, pool, 0 );
+	}
+	frame.descriptorPool = 0;
+}
+
+void VulkanDevice::FlushUploads( Frame& frame )
+{
+	for( size_t i = 0; i <= frame.uploadChunk && i < frame.uploadChunks.size(); ++i )
+	{
+		vmaFlushAllocation( m_allocator, frame.uploadChunks[i].allocation, 0, VK_WHOLE_SIZE );
+	}
+}
+
+bool VulkanDevice::AllocateUpload( VkDeviceSize size, VkDeviceSize alignment, UploadAllocation& allocation )
+{
+	static const VkDeviceSize CHUNK_SIZE = 4 * 1024 * 1024;
+	GetCommandBuffer(); // the allocation belongs to the recording frame
+	Frame& frame = m_frames[m_frameIndex];
+	alignment = std::max<VkDeviceSize>( alignment, 16 );
+	for( ;; )
+	{
+		if( frame.uploadChunk < frame.uploadChunks.size() )
+		{
+			VkDeviceSize offset = ( frame.uploadOffset + alignment - 1 ) / alignment * alignment;
+			if( offset + size <= frame.uploadChunkSizes[frame.uploadChunk] )
+			{
+				auto& chunk = frame.uploadChunks[frame.uploadChunk];
+				allocation.buffer = chunk.buffer;
+				allocation.offset = offset;
+				allocation.data = static_cast<uint8_t*>( chunk.mapped ) + offset;
+				frame.uploadOffset = offset + size;
+				return true;
+			}
+			if( frame.uploadChunk + 1 < frame.uploadChunks.size() && size <= frame.uploadChunkSizes[frame.uploadChunk + 1] )
+			{
+				++frame.uploadChunk;
+				frame.uploadOffset = 0;
+				continue;
+			}
+		}
+		// A new chunk after the current one (chunks past it are empty and kept for the next frames).
+		const VkDeviceSize chunkSize = std::max( CHUNK_SIZE, size );
+		VkBufferCreateInfo bufferInfo{ VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
+		bufferInfo.size = chunkSize;
+		bufferInfo.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT |
+			VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;
+		VmaAllocationCreateInfo allocationInfo{};
+		allocationInfo.usage = VMA_MEMORY_USAGE_CPU_TO_GPU;
+		allocationInfo.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT;
+		StagingBuffer chunk;
+		VmaAllocationInfo info{};
+		VkResult result = vmaCreateBuffer( m_allocator, &bufferInfo, &allocationInfo, &chunk.buffer, &chunk.allocation, &info );
+		if( result != VK_SUCCESS )
+		{
+			CCP_AL_LOGERR( "Vulkan: upload chunk of %llu bytes failed: %s", (unsigned long long)chunkSize, VkResultToString( result ) );
+			return false;
+		}
+		chunk.mapped = info.pMappedData;
+		const size_t insertAt = frame.uploadChunks.empty() ? 0 : frame.uploadChunk + 1;
+		frame.uploadChunks.insert( frame.uploadChunks.begin() + insertAt, chunk );
+		frame.uploadChunkSizes.insert( frame.uploadChunkSizes.begin() + insertAt, chunkSize );
+		frame.uploadChunk = insertAt;
+		frame.uploadOffset = 0;
+	}
+}
+
+VkDescriptorSet VulkanDevice::AllocateDescriptorSet( VkDescriptorSetLayout layout )
+{
+	GetCommandBuffer();
+	Frame& frame = m_frames[m_frameIndex];
+	for( ;; )
+	{
+		if( frame.descriptorPool < frame.descriptorPools.size() )
+		{
+			VkDescriptorSetAllocateInfo allocateInfo{ VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO };
+			allocateInfo.descriptorPool = frame.descriptorPools[frame.descriptorPool];
+			allocateInfo.descriptorSetCount = 1;
+			allocateInfo.pSetLayouts = &layout;
+			VkDescriptorSet set = VK_NULL_HANDLE;
+			VkResult result = vkAllocateDescriptorSets( m_device, &allocateInfo, &set );
+			if( result == VK_SUCCESS )
+			{
+				return set;
+			}
+			if( result != VK_ERROR_OUT_OF_POOL_MEMORY && result != VK_ERROR_FRAGMENTED_POOL )
+			{
+				CCP_AL_LOGERR( "Vulkan: vkAllocateDescriptorSets failed: %s", VkResultToString( result ) );
+				return VK_NULL_HANDLE;
+			}
+			++frame.descriptorPool;
+			continue;
+		}
+		const uint32_t perType = 4096;
+		const VkDescriptorPoolSize sizes[] = {
+			{ VK_DESCRIPTOR_TYPE_SAMPLER, perType },
+			{ VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, perType },
+			{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, perType },
+			{ VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, perType },
+			{ VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, perType },
+			{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, perType },
+			{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, perType },
+		};
+		VkDescriptorPoolCreateInfo poolInfo{ VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO };
+		poolInfo.maxSets = 1024;
+		poolInfo.poolSizeCount = uint32_t( sizeof( sizes ) / sizeof( sizes[0] ) );
+		poolInfo.pPoolSizes = sizes;
+		VkDescriptorPool pool = VK_NULL_HANDLE;
+		VkResult result = vkCreateDescriptorPool( m_device, &poolInfo, nullptr, &pool );
+		if( result != VK_SUCCESS )
+		{
+			CCP_AL_LOGERR( "Vulkan: vkCreateDescriptorPool failed: %s", VkResultToString( result ) );
+			return VK_NULL_HANDLE;
+		}
+		frame.descriptorPools.push_back( pool );
+		frame.descriptorPool = frame.descriptorPools.size() - 1;
+	}
+}
+
 void VulkanDevice::RecordFullBarrier()
 {
+	EndRendering();
 	VkMemoryBarrier2 barrier{ VK_STRUCTURE_TYPE_MEMORY_BARRIER_2 };
 	barrier.srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
 	barrier.srcAccessMask = VK_ACCESS_2_MEMORY_WRITE_BIT;
@@ -707,6 +904,7 @@ void VulkanDevice::SynchronizeForCpuAccess()
 {
 	if( m_recording )
 	{
+		EndRendering();
 		// Make device writes available to the host before the fence signals.
 		VkMemoryBarrier2 barrier{ VK_STRUCTURE_TYPE_MEMORY_BARRIER_2 };
 		barrier.srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;

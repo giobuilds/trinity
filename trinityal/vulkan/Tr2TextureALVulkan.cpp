@@ -445,6 +445,21 @@ void Tr2TextureAL::Destroy()
 	{
 		m_device->ReleaseStagingBuffer( m_readStaging );
 		m_device->ReleaseStagingBuffer( m_writeStaging );
+		if( !m_views.empty() )
+		{
+			VkDevice device = m_device->GetHandle();
+			std::vector<VkImageView> views;
+			for( auto& view : m_views )
+			{
+				views.push_back( view.second );
+			}
+			m_device->ReleaseLater( [device, views] {
+				for( auto view : views )
+				{
+					vkDestroyImageView( device, view, nullptr );
+				}
+			} );
+		}
 		if( m_image )
 		{
 			VmaAllocator allocator = m_device->GetAllocator();
@@ -453,6 +468,7 @@ void Tr2TextureAL::Destroy()
 			m_device->ReleaseLater( [allocator, image, allocation] { vmaDestroyImage( allocator, image, allocation ); } );
 		}
 	}
+	m_views.clear();
 	m_image = VK_NULL_HANDLE;
 	m_allocation = VK_NULL_HANDLE;
 	m_vkFormat = VK_FORMAT_UNDEFINED;
@@ -811,6 +827,122 @@ ALResult Tr2TextureAL::Resolve( Tr2TextureAL& destination, Tr2RenderContextAL& r
 	vkCmdResolveImage( m_device->GetCommandBuffer(), m_image, VK_IMAGE_LAYOUT_GENERAL, destination.m_image, VK_IMAGE_LAYOUT_GENERAL, 1, &region );
 	m_device->RecordFullBarrier();
 	return S_OK;
+}
+
+bool Tr2TextureAL::MakeViewKey( VkImageViewType type, VkFormat format, VkImageAspectFlags aspect, uint32_t baseMip, uint32_t mipCount, ViewKey& key ) const
+{
+	const uint32_t layers = LayerCount( m_desc );
+	key = ViewKey{ type, format, aspect, baseMip, mipCount, 0, 1 };
+	switch( m_desc.GetType() )
+	{
+	case TEX_TYPE_1D:
+		if( type == VK_IMAGE_VIEW_TYPE_1D_ARRAY )
+		{
+			key.layerCount = layers;
+			return true;
+		}
+		return type == VK_IMAGE_VIEW_TYPE_1D;
+	case TEX_TYPE_3D:
+		return type == VK_IMAGE_VIEW_TYPE_3D;
+	case TEX_TYPE_CUBE:
+		if( type == VK_IMAGE_VIEW_TYPE_CUBE || type == VK_IMAGE_VIEW_TYPE_2D_ARRAY )
+		{
+			key.layerCount = 6;
+			return true;
+		}
+		if( type == VK_IMAGE_VIEW_TYPE_CUBE_ARRAY )
+		{
+			key.layerCount = 6;
+			return m_device->GetEnabledFeatures().imageCubeArray != VK_FALSE;
+		}
+		return type == VK_IMAGE_VIEW_TYPE_2D;
+	case TEX_TYPE_2D:
+		if( type == VK_IMAGE_VIEW_TYPE_2D_ARRAY )
+		{
+			key.layerCount = layers;
+			return true;
+		}
+		return type == VK_IMAGE_VIEW_TYPE_2D;
+	default:
+		return false;
+	}
+}
+
+VkImageView Tr2TextureAL::GetView( const ViewKey& key )
+{
+	for( auto& view : m_views )
+	{
+		if( view.first == key )
+		{
+			return view.second;
+		}
+	}
+	VkImageViewCreateInfo info{ VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO };
+	info.image = m_image;
+	info.viewType = key.type;
+	info.format = key.format;
+	info.subresourceRange = { key.aspect, key.baseMip, key.mipCount, key.baseLayer, key.layerCount };
+	VkImageView view = VK_NULL_HANDLE;
+	VkResult result = vkCreateImageView( m_device->GetHandle(), &info, nullptr, &view );
+	if( result != VK_SUCCESS )
+	{
+		CCP_AL_LOGERR( "Vulkan: vkCreateImageView failed: %s", VkResultToString( result ) );
+		return VK_NULL_HANDLE;
+	}
+	m_views.emplace_back( key, view );
+	return view;
+}
+
+VkImageView Tr2TextureAL::GetShaderView( VkImageViewType type, ColorSpace colorSpace )
+{
+	if( !IsValid() )
+	{
+		return VK_NULL_HANDLE;
+	}
+	VkFormat format = m_vkFormat;
+	if( colorSpace == COLOR_SPACE_SRGB && !( m_aspect & VK_IMAGE_ASPECT_DEPTH_BIT ) )
+	{
+		VkFormat srgb = ToVkFormat( MakeSrgb( m_desc.GetFormat() ) );
+		format = srgb != VK_FORMAT_UNDEFINED ? srgb : format;
+	}
+	// Depth-stencil images are sampled through their depth aspect.
+	const VkImageAspectFlags aspect = ( m_aspect & VK_IMAGE_ASPECT_DEPTH_BIT ) ? VkImageAspectFlags( VK_IMAGE_ASPECT_DEPTH_BIT ) : m_aspect;
+	ViewKey key;
+	if( !MakeViewKey( type, format, aspect, 0, m_desc.GetTrueMipCount(), key ) )
+	{
+		return VK_NULL_HANDLE;
+	}
+	return GetView( key );
+}
+
+VkImageView Tr2TextureAL::GetStorageView( VkImageViewType type, uint32_t mip )
+{
+	if( !IsValid() || mip >= m_desc.GetTrueMipCount() )
+	{
+		return VK_NULL_HANDLE;
+	}
+	ViewKey key;
+	if( !MakeViewKey( type, m_vkFormat, m_aspect, mip, 1, key ) )
+	{
+		return VK_NULL_HANDLE;
+	}
+	return GetView( key );
+}
+
+VkImageView Tr2TextureAL::GetAttachmentView( uint32_t slice, bool srgb )
+{
+	if( !IsValid() || slice >= LayerCount( m_desc ) )
+	{
+		return VK_NULL_HANDLE;
+	}
+	VkFormat format = m_vkFormat;
+	if( srgb && !( m_aspect & VK_IMAGE_ASPECT_DEPTH_BIT ) )
+	{
+		VkFormat srgbFormat = ToVkFormat( MakeSrgb( m_desc.GetFormat() ) );
+		format = srgbFormat != VK_FORMAT_UNDEFINED ? srgbFormat : format;
+	}
+	ViewKey key{ VK_IMAGE_VIEW_TYPE_2D, format, m_aspect, 0, 1, slice, 1 };
+	return GetView( key );
 }
 
 uintptr_t Tr2TextureAL::GetSharedHandle() const

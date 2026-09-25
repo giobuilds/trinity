@@ -10,6 +10,7 @@
 
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace TrinityALImpl
 {
@@ -70,7 +71,28 @@ public:
 		return m_aspect;
 	}
 
+	// Views, created on first use and kept until the texture is destroyed. VK_NULL_HANDLE when the texture cannot be
+	// seen that way (e.g. a volume texture through a 2D register).
+	VkImageView GetShaderView( VkImageViewType type, Tr2RenderContextEnum::ColorSpace colorSpace );
+	VkImageView GetStorageView( VkImageViewType type, uint32_t mip );
+	VkImageView GetAttachmentView( uint32_t slice, bool srgb );
+
 private:
+	struct ViewKey
+	{
+		VkImageViewType type;
+		VkFormat format;
+		VkImageAspectFlags aspect;
+		uint32_t baseMip, mipCount, baseLayer, layerCount;
+		bool operator==( const ViewKey& other ) const
+		{
+			return memcmp( this, &other, sizeof( *this ) ) == 0;
+		}
+	};
+	VkImageView GetView( const ViewKey& key );
+	// Clamps a view request to what this image allows; false if the view type does not fit the image.
+	bool MakeViewKey( VkImageViewType type, VkFormat format, VkImageAspectFlags aspect, uint32_t baseMip, uint32_t mipCount, ViewKey& key ) const;
+
 	void RecordInitialLayout();
 	bool UploadInitialData( const Tr2SubresourceData* initialData );
 
@@ -85,6 +107,7 @@ private:
 	VkFormat m_vkFormat = VK_FORMAT_UNDEFINED;
 	VkImageAspectFlags m_aspect = 0;
 	std::string m_name;
+	std::vector<std::pair<ViewKey, VkImageView>> m_views;
 
 	// The buffer handed out by the current map, and for writes the region to copy it into.
 	VulkanDevice::StagingBuffer m_readStaging;

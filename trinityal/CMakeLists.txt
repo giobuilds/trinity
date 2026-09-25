@@ -361,6 +361,11 @@ set(_SOURCES
     vulkan/VulkanFormats.cpp
     vulkan/VulkanFormats.h
     vulkan/VulkanIncludes.h
+    vulkan/VulkanPipelineState.h
+    vulkan/VulkanSpirv.cpp
+    vulkan/VulkanSpirv.h
+    vulkan/VulkanStates.cpp
+    vulkan/VulkanStates.h
     vulkan/upscaling/Tr2UpscalingALVulkan.cpp
     vulkan/upscaling/Tr2UpscalingALVulkan.h
 )

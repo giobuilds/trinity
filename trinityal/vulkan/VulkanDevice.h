@@ -131,6 +131,47 @@ public:
 	// the device cannot render to fall back to one it can (D24S8 -> D32S8, as AMD hardware has no D24).
 	VkFormat GetImageFormat( Tr2RenderContextEnum::PixelFormat format ) const;
 
+	// Frame-lifetime host memory for constants and user-pointer draws: valid until the frame it was allocated in has
+	// completed on the GPU. Usable as uniform, storage, vertex, index and transfer-source data.
+	struct UploadAllocation
+	{
+		VkBuffer buffer = VK_NULL_HANDLE;
+		VkDeviceSize offset = 0;
+		void* data = nullptr;
+	};
+	bool AllocateUpload( VkDeviceSize size, VkDeviceSize alignment, UploadAllocation& allocation );
+
+	// A descriptor set from the recording frame's pools; freed (by pool reset) when the frame slot is reused.
+	VkDescriptorSet AllocateDescriptorSet( VkDescriptorSetLayout layout );
+
+	// The render context keeps a dynamic-rendering scope open across draws. Anything recorded outside a render pass
+	// (copies, barriers, dispatches, submits) must close it first; the device calls this hook before doing so.
+	void SetRenderingEndHook( std::function<void()> hook )
+	{
+		m_renderingEndHook = std::move( hook );
+	}
+	void EndRendering()
+	{
+		if( m_renderingEndHook )
+		{
+			m_renderingEndHook();
+		}
+	}
+
+	// 64 zeroed bytes, bound as a stride-0 vertex stream for shader inputs the vertex layout does not provide.
+	VkBuffer GetZeroBuffer() const
+	{
+		return m_zeroBuffer;
+	}
+	bool HasNullDescriptors() const
+	{
+		return m_nullDescriptors;
+	}
+	const VkPhysicalDeviceLimits& GetLimits() const
+	{
+		return m_adapter.properties.limits;
+	}
+
 	// A full pipeline/memory barrier in the current command buffer: every earlier write is visible to every later
 	// access. Coarse; used until per-resource state tracking lands.
 	void RecordFullBarrier();
@@ -159,11 +200,24 @@ private:
 		VkFence fence = VK_NULL_HANDLE;
 		bool submitted = false;
 		std::vector<std::function<void()>> releases;
+		// Upload chunks and descriptor pools, reset when this slot starts recording again.
+		std::vector<StagingBuffer> uploadChunks;
+		std::vector<VkDeviceSize> uploadChunkSizes;
+		size_t uploadChunk = 0;
+		VkDeviceSize uploadOffset = 0;
+		std::vector<VkDescriptorPool> descriptorPools;
+		size_t descriptorPool = 0;
 	};
+	void ResetFrameAllocators( Frame& frame );
+	void FlushUploads( Frame& frame );
 
 	VulkanAdapter m_adapter;
 	VkPhysicalDeviceFeatures m_features{};
 	bool m_hasD24S8 = true;
+	bool m_nullDescriptors = false;
+	std::function<void()> m_renderingEndHook;
+	VkBuffer m_zeroBuffer = VK_NULL_HANDLE;
+	VmaAllocation m_zeroBufferAllocation = VK_NULL_HANDLE;
 	VkDevice m_device = VK_NULL_HANDLE;
 	VkQueue m_queue = VK_NULL_HANDLE;
 	VmaAllocator m_allocator = VK_NULL_HANDLE;

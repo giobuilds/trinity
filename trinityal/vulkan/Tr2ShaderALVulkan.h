@@ -5,10 +5,16 @@
 #if TRINITY_PLATFORM == TRINITY_VULKAN
 
 #include "../include/Tr2ShaderAL.h"
+#include "VulkanSpirv.h"
+
+#include <memory>
+#include <string>
 
 
 namespace TrinityALImpl
 {
+class VulkanDevice;
+
 // -------------------------------------------------------------
 // Description:
 //   A low level wrapper around shaders / shader programs.
@@ -43,10 +49,28 @@ public:
 	void Describe( Tr2DeviceResourceDescriptionAL& description ) const;
 	ALResult SetName( const char* name );
 
+	// SPIR-V with bindings moved to this stage's range (see SpirvBinding), and what it declares.
+	VkShaderModule GetModule() const
+	{
+		return m_module;
+	}
+	const SpirvReflection& GetReflection() const
+	{
+		return m_reflection;
+	}
+	const std::string& GetName() const
+	{
+		return m_name;
+	}
+
 private:
 	Tr2RenderContextEnum::ShaderType m_type;
-	CcpMallocBuffer m_bytecode;
+	CcpMallocBuffer m_bytecode; // as given, for GetBytecode
 	Tr2ShaderSignatureAL m_signature;
+	std::shared_ptr<VulkanDevice> m_device;
+	VkShaderModule m_module = VK_NULL_HANDLE;
+	SpirvReflection m_reflection;
+	std::string m_name;
 };
 }
 
