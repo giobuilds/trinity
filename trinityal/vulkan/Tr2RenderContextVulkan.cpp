@@ -11,6 +11,7 @@
 #include "VulkanDevice.h"
 #include "VulkanFormats.h"
 #include "VulkanStates.h"
+#include "VulkanSwapchain.h"
 #include "Tr2BufferALVulkan.h"
 #include "Tr2ConstantBufferALVulkan.h"
 #include "Tr2ResourceSetALVulkan.h"
@@ -166,6 +167,7 @@ void Tr2RenderContextAL::Destroy()
 		}
 	}
 	m_constantUploads.clear();
+	m_swapchain.reset();
 	if( m_device )
 	{
 		m_device->Submit();
@@ -1070,8 +1072,31 @@ PixelFormat Tr2RenderContextAL::GetBackBufferFormat() const
 
 ALResult Tr2RenderContextAL::SetPresentParameters( unsigned, const Tr2PresentParametersAL& presentationParameters )
 {
-	// Offscreen until the swapchain exists (phase 3). CPU-readable so screenshots and tests can read it back.
 	EndRenderingVulkan( true );
+
+	// The window's swapchain; without a window the context renders offscreen (tests, headless tools).
+	const Tr2WindowHandle window = presentationParameters.outputWindow;
+	const bool vsync = presentationParameters.presentInterval != PRESENT_INTERVAL_IMMEDIATE;
+	if( !window )
+	{
+		m_swapchain.reset();
+	}
+	else if( !m_swapchain || m_swapchain->GetWindow() != window )
+	{
+		m_swapchain.reset();
+		auto swapchain = std::make_unique<TrinityALImpl::VulkanSwapchain>();
+		if( !swapchain->Create( m_device, window, vsync ) )
+		{
+			return E_FAIL;
+		}
+		m_swapchain = std::move( swapchain );
+	}
+	else
+	{
+		m_swapchain->SetVsync( vsync );
+	}
+
+	// Trinity renders into its own back buffer, which Present blits to the swapchain. CPU-readable for screenshots.
 	CR_RETURN_HR( m_defaultBackBuffer.Create(
 		Tr2BitmapDimensions( presentationParameters.mode.width, presentationParameters.mode.height, 1, PIXEL_FORMAT_B8G8R8A8_UNORM ),
 		Tr2MsaaDesc(),
@@ -1112,9 +1137,15 @@ ALResult Tr2RenderContextAL::Present()
 	{
 		return E_FAIL;
 	}
-	// Offscreen until the swapchain exists (phase 3): presenting submits the frame's commands.
 	EndRenderingVulkan( false );
-	if( m_device->Submit() != VK_SUCCESS )
+	if( m_swapchain && m_defaultBackBuffer.IsValid() )
+	{
+		if( !m_swapchain->Present( *m_defaultBackBuffer.m_texture ) )
+		{
+			return E_FAIL;
+		}
+	}
+	else if( m_device->Submit() != VK_SUCCESS )
 	{
 		return E_FAIL;
 	}

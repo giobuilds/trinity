@@ -23,6 +23,7 @@ set(_SOURCES
     RenderTarget.cpp
     RenderWindow.h
     RenderWindow_Stub.cpp
+    RenderWindow_SDL.cpp
     RenderWindow_Win32.cpp
     RenderWindow_Macos.mm
     Rendering.cpp
@@ -44,6 +45,7 @@ set(_SOURCES
     WithValidRenderContextFixture.cpp
     WithWindowFixture.h
     WithWindowFixture_Stub.cpp
+    WithWindowFixture_SDL.cpp
     WithWindowFixture_Win32.cpp
     WithWindowFixture_Macos.mm
     XrgbVolume.h
@@ -271,7 +273,8 @@ endif()
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND BUILD_VULKAN)
     ccp_add_executable(TrinityALTest_vulkan ${_SOURCES})
-    target_link_libraries(TrinityALTest_vulkan PRIVATE TrinityAL_vulkan)
+    find_package(SDL3 CONFIG REQUIRED)
+    target_link_libraries(TrinityALTest_vulkan PRIVATE TrinityAL_vulkan SDL3::SDL3)
     target_compile_definitions(TrinityALTest_vulkan PRIVATE TRINITY_PLATFORM=TRINITY_VULKAN)
     set_shared_trinityaltest_properties(TrinityALTest_vulkan)
 

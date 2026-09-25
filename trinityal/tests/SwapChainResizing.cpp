@@ -256,3 +256,32 @@ TEST_F( SwapChainResizing, CanChangeFullscreenResolution )
 	ASSERT_HRESULT_SUCCEEDED( renderContext->SetShaderProgram( Tr2ShaderProgramAL() ) );
 	ASSERT_HRESULT_SUCCEEDED( ResizeWindow( 640, 480 ) );
 }
+
+#if TRINITY_PLATFORM == TRINITY_VULKAN
+// Resizing the window and the present parameters between frames recreates the swapchain at the new size; presents
+// keep working throughout, including frames presented before the back buffer catches up with the window.
+TEST_F( SwapChainResizing, PresentsAcrossWindowResizes )
+{
+	ENSURE_GPU_OR_SKIP
+	if( !GetWindowHandle() )
+	{
+		GTEST_SKIP() << "No window system (SDL video could not start).";
+	}
+	const uint32_t sizes[][2] = { { 400, 300 }, { 800, 200 }, { 640, 480 } };
+	for( auto& size : sizes )
+	{
+		ASSERT_TRUE( GetWindow()->Resize( size[0], size[1] ) );
+		ASSERT_HRESULT_SUCCEEDED( renderContext->Present() ); // old back buffer, new window size
+		ASSERT_HRESULT_SUCCEEDED( ResizeWindow( size[0], size[1] ) );
+		EXPECT_EQ( size[0], renderContext->GetDefaultBackBuffer().GetWidth() );
+		EXPECT_EQ( size[1], renderContext->GetDefaultBackBuffer().GetHeight() );
+		for( int frame = 0; frame < 3; ++frame )
+		{
+			ASSERT_HRESULT_SUCCEEDED( renderContext->BeginScene() );
+			ASSERT_HRESULT_SUCCEEDED( renderContext->Clear( CLEARFLAGS_TARGET, 0xff000000 | ( frame * 60 ), 1.0f ) );
+			ASSERT_HRESULT_SUCCEEDED( renderContext->EndScene() );
+			ASSERT_HRESULT_SUCCEEDED( renderContext->Present() );
+		}
+	}
+}
+#endif

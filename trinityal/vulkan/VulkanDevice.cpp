@@ -216,6 +216,23 @@ bool VulkanInstance::Initialize()
 		layers.push_back( validationLayer );
 		extensions.push_back( VK_EXT_DEBUG_UTILS_EXTENSION_NAME );
 	}
+	// Every window-system surface the loader offers, so any SDL video driver (X11, Wayland, offscreen) can make surfaces
+	// whenever windows are created; the instance usually exists before SDL is initialised.
+	static const char* surfaceExtensions[] = {
+		VK_KHR_SURFACE_EXTENSION_NAME,
+		"VK_KHR_xlib_surface",
+		"VK_KHR_xcb_surface",
+		"VK_KHR_wayland_surface",
+		"VK_EXT_headless_surface",
+	};
+	m_surfaces = HasInstanceExtension( VK_KHR_SURFACE_EXTENSION_NAME );
+	for( const char* extension : surfaceExtensions )
+	{
+		if( m_surfaces && HasInstanceExtension( extension ) )
+		{
+			extensions.push_back( extension );
+		}
+	}
 
 	VkApplicationInfo appInfo{ VK_STRUCTURE_TYPE_APPLICATION_INFO };
 	appInfo.pApplicationName = "Carbon";
@@ -438,6 +455,11 @@ bool VulkanDevice::Initialize( uint32_t adapterIndex )
 			m_nullDescriptors = true;
 		}
 	}
+	if( VulkanInstance::Get()->SurfacesEnabled() && hasExtension( VK_KHR_SWAPCHAIN_EXTENSION_NAME ) )
+	{
+		extensions.push_back( VK_KHR_SWAPCHAIN_EXTENSION_NAME );
+		m_swapchains = true;
+	}
 	if( !m_nullDescriptors )
 	{
 		CCP_AL_LOGWARN( "Vulkan: %s has no null descriptors; unbound resource slots are undefined", m_adapter.properties.deviceName );
@@ -654,7 +676,13 @@ VkResult VulkanDevice::Submit()
 	VkSubmitInfo2 submitInfo{ VK_STRUCTURE_TYPE_SUBMIT_INFO_2 };
 	submitInfo.commandBufferInfoCount = 1;
 	submitInfo.pCommandBufferInfos = &commandInfo;
+	submitInfo.waitSemaphoreInfoCount = uint32_t( m_submitWaits.size() );
+	submitInfo.pWaitSemaphoreInfos = m_submitWaits.data();
+	submitInfo.signalSemaphoreInfoCount = uint32_t( m_submitSignals.size() );
+	submitInfo.pSignalSemaphoreInfos = m_submitSignals.data();
 	result = vkQueueSubmit2( m_queue, 1, &submitInfo, frame.fence );
+	m_submitWaits.clear();
+	m_submitSignals.clear();
 	if( result != VK_SUCCESS )
 	{
 		CCP_AL_LOGERR( "Vulkan: vkQueueSubmit2 failed: %s", VkResultToString( result ) );
@@ -698,6 +726,22 @@ void VulkanDevice::WaitIdle()
 		}
 		m_pendingReleases.clear();
 	}
+}
+
+void VulkanDevice::AddSubmitWait( VkSemaphore semaphore, VkPipelineStageFlags2 stages )
+{
+	VkSemaphoreSubmitInfo info{ VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO };
+	info.semaphore = semaphore;
+	info.stageMask = stages;
+	m_submitWaits.push_back( info );
+}
+
+void VulkanDevice::AddSubmitSignal( VkSemaphore semaphore )
+{
+	VkSemaphoreSubmitInfo info{ VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO };
+	info.semaphore = semaphore;
+	info.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+	m_submitSignals.push_back( info );
 }
 
 uint64_t VulkanDevice::GetCompletedSerial()

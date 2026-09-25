@@ -45,6 +45,10 @@ public:
 	{
 		return m_validation;
 	}
+	bool SurfacesEnabled() const
+	{
+		return m_surfaces;
+	}
 	static uint32_t ValidationErrorCount();
 
 	void FillAdapterInfo( uint32_t adapter, Tr2AdapterInfo& info ) const;
@@ -58,6 +62,7 @@ private:
 	VkInstance m_instance = VK_NULL_HANDLE;
 	VkDebugUtilsMessengerEXT m_messenger = VK_NULL_HANDLE;
 	bool m_validation = false;
+	bool m_surfaces = false;
 	std::vector<VulkanAdapter> m_adapters;
 };
 
@@ -201,6 +206,18 @@ public:
 	// Submits if the serial is still being recorded, then waits for it. False if the device failed.
 	bool WaitForSerial( uint64_t serial );
 
+	// Semaphores the next Submit waits on / signals (swapchain acquire and present).
+	void AddSubmitWait( VkSemaphore semaphore, VkPipelineStageFlags2 stages );
+	void AddSubmitSignal( VkSemaphore semaphore );
+	bool SupportsSwapchains() const
+	{
+		return m_swapchains;
+	}
+	uint32_t GetQueueFamily() const
+	{
+		return m_adapter.queueFamily;
+	}
+
 	uint32_t GetTimestampValidBits() const
 	{
 		return m_timestampValidBits;
@@ -234,6 +251,9 @@ private:
 	VkPhysicalDeviceFeatures m_features{};
 	bool m_hasD24S8 = true;
 	bool m_nullDescriptors = false;
+	bool m_swapchains = false;
+	std::vector<VkSemaphoreSubmitInfo> m_submitWaits;
+	std::vector<VkSemaphoreSubmitInfo> m_submitSignals;
 	std::function<void()> m_renderingEndHook;
 	VkBuffer m_zeroBuffer = VK_NULL_HANDLE;
 	VmaAllocation m_zeroBufferAllocation = VK_NULL_HANDLE;

@@ -1,8 +1,8 @@
 // Copyright © 2023 CCP ehf.
 
 #include "StdAfx.h"
-// Headless window, also used by the Vulkan backend until its SDL3 window exists.
-#if !defined( _WIN32 ) && !defined( TRINITY_AL_MOBILE ) && ( TRINITY_PLATFORM == TRINITY_STUB || TRINITY_PLATFORM == TRINITY_VULKAN )
+// Headless window for the stub backend (the Vulkan backend uses SDL3 windows: RenderWindow_SDL.cpp).
+#if !defined( _WIN32 ) && !defined( TRINITY_AL_MOBILE ) && TRINITY_PLATFORM == TRINITY_STUB
 
 #include "WithWindowFixture.h"
 #include "RenderWindow.h"

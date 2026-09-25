@@ -367,6 +367,8 @@ set(_SOURCES
     vulkan/VulkanSpirv.cpp
     vulkan/VulkanSpirv.h
     vulkan/VulkanStates.cpp
+    vulkan/VulkanSwapchain.cpp
+    vulkan/VulkanSwapchain.h
     vulkan/VulkanStates.h
     vulkan/upscaling/Tr2UpscalingALVulkan.cpp
     vulkan/upscaling/Tr2UpscalingALVulkan.h
@@ -572,10 +574,12 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
         # Vulkan is loaded at runtime through volk (no link against libvulkan); VMA manages device memory.
         find_package(volk CONFIG REQUIRED)
         find_package(VulkanMemoryAllocator CONFIG REQUIRED)
+        # SDL3 creates the Vulkan surfaces for windows (Tr2WindowHandle is an SDL_Window*).
+        find_package(SDL3 CONFIG REQUIRED)
         ccp_add_library(TrinityAL_vulkan STATIC)
         target_compile_definitions(TrinityAL_vulkan PUBLIC TRINITY_PLATFORM=TRINITY_VULKAN)
         set_shared_trinityal_properties(vulkan)
-        target_link_libraries(TrinityAL_vulkan PUBLIC volk::volk_headers GPUOpen::VulkanMemoryAllocator PRIVATE volk::volk)
+        target_link_libraries(TrinityAL_vulkan PUBLIC volk::volk_headers GPUOpen::VulkanMemoryAllocator SDL3::SDL3 PRIVATE volk::volk)
     endif()
 else()
     message(FATAL_ERROR "Unsupported trinity platform, only stub would be available!")

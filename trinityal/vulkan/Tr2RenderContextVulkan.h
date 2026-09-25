@@ -28,6 +28,7 @@
 namespace TrinityALImpl
 {
 class VulkanDevice;
+class VulkanSwapchain;
 }
 
 class Tr2ConstantBufferAL;
@@ -329,6 +330,8 @@ private:
 	mutable std::deque<std::pair<uint64_t, uint64_t>> m_framesInFlight;
 	mutable uint64_t m_renderedFrameNumber;
 	std::shared_ptr<TrinityALImpl::VulkanDevice> m_device;
+	// The output window's swapchain (none when the present parameters have no window: offscreen).
+	std::unique_ptr<TrinityALImpl::VulkanSwapchain> m_swapchain;
 
 	// Draw state
 	VertexStream m_streams[MAX_VERTEX_STREAMS];
