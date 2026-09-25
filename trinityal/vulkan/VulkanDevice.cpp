@@ -464,6 +464,13 @@ bool VulkanDevice::Initialize( uint32_t adapterIndex )
 	}
 	volkLoadDevice( m_device );
 	vkGetDeviceQueue( m_device, m_adapter.queueFamily, 0, &m_queue );
+	{
+		uint32_t familyCount = 0;
+		vkGetPhysicalDeviceQueueFamilyProperties( m_adapter.physicalDevice, &familyCount, nullptr );
+		std::vector<VkQueueFamilyProperties> families( familyCount );
+		vkGetPhysicalDeviceQueueFamilyProperties( m_adapter.physicalDevice, &familyCount, families.data() );
+		m_timestampValidBits = families[m_adapter.queueFamily].timestampValidBits;
+	}
 
 	// VMA is built without its own function loading (see VulkanIncludes.h), so it gets volk's pointers.
 	VmaVulkanFunctions functions{};
@@ -600,6 +607,7 @@ void VulkanDevice::WaitForFrame( uint32_t frameIndex )
 	{
 		vkWaitForFences( m_device, 1, &frame.fence, VK_TRUE, UINT64_MAX );
 		frame.submitted = false;
+		m_completedSerial = std::max( m_completedSerial, frame.serial );
 	}
 	for( auto& release : frame.releases )
 	{
@@ -653,6 +661,7 @@ VkResult VulkanDevice::Submit()
 		return result;
 	}
 	frame.submitted = true;
+	frame.serial = m_submittedFrames + 1;
 	frame.releases.insert( frame.releases.end(), std::make_move_iterator( m_pendingReleases.begin() ), std::make_move_iterator( m_pendingReleases.end() ) );
 	m_pendingReleases.clear();
 	++m_submittedFrames;
@@ -675,6 +684,7 @@ VkResult VulkanDevice::Flush()
 void VulkanDevice::WaitIdle()
 {
 	vkDeviceWaitIdle( m_device );
+	m_completedSerial = m_submittedFrames;
 	for( uint32_t i = 0; i < FRAMES_IN_FLIGHT; ++i )
 	{
 		m_frames[i].submitted = false;
@@ -688,6 +698,51 @@ void VulkanDevice::WaitIdle()
 		}
 		m_pendingReleases.clear();
 	}
+}
+
+uint64_t VulkanDevice::GetCompletedSerial()
+{
+	for( uint32_t i = 0; i < FRAMES_IN_FLIGHT; ++i )
+	{
+		if( m_frames[i].submitted && vkGetFenceStatus( m_device, m_frames[i].fence ) == VK_SUCCESS )
+		{
+			WaitForFrame( i ); // signalled: returns at once and runs the frame's releases
+		}
+	}
+	return m_completedSerial;
+}
+
+bool VulkanDevice::IsSerialComplete( uint64_t serial )
+{
+	uint64_t completed = GetCompletedSerial();
+	if( completed >= serial )
+	{
+		return true;
+	}
+	return serial > m_submittedFrames && !m_recording && completed == m_submittedFrames;
+}
+
+bool VulkanDevice::WaitForSerial( uint64_t serial )
+{
+	if( serial > m_submittedFrames )
+	{
+		if( !m_recording )
+		{
+			return true; // nothing was recorded after the serial was taken, so there is nothing to wait for
+		}
+		if( Submit() != VK_SUCCESS )
+		{
+			return false;
+		}
+	}
+	for( uint32_t i = 0; i < FRAMES_IN_FLIGHT; ++i )
+	{
+		if( m_frames[i].submitted && m_frames[i].serial <= serial )
+		{
+			WaitForFrame( i );
+		}
+	}
+	return true;
 }
 
 void VulkanDevice::ReleaseLater( std::function<void()> release )

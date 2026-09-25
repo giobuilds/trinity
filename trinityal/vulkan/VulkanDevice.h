@@ -188,6 +188,24 @@ public:
 		return m_submittedFrames;
 	}
 
+	// Submissions are numbered 1, 2, ... Work recorded now goes out with GetRecordingSerial(); a serial is complete once
+	// the GPU has finished it (and, the queue being in order, everything before it).
+	uint64_t GetRecordingSerial() const
+	{
+		return m_submittedFrames + 1;
+	}
+	uint64_t GetCompletedSerial(); // polls the frame fences
+	// True when everything recorded before the serial was taken has completed: the serial itself, or, if nothing has
+	// been recorded since it was taken, all submitted work.
+	bool IsSerialComplete( uint64_t serial );
+	// Submits if the serial is still being recorded, then waits for it. False if the device failed.
+	bool WaitForSerial( uint64_t serial );
+
+	uint32_t GetTimestampValidBits() const
+	{
+		return m_timestampValidBits;
+	}
+
 private:
 	VulkanDevice() = default;
 	bool Initialize( uint32_t adapter );
@@ -199,6 +217,7 @@ private:
 		VkCommandBuffer commandBuffer = VK_NULL_HANDLE;
 		VkFence fence = VK_NULL_HANDLE;
 		bool submitted = false;
+		uint64_t serial = 0;
 		std::vector<std::function<void()>> releases;
 		// Upload chunks and descriptor pools, reset when this slot starts recording again.
 		std::vector<StagingBuffer> uploadChunks;
@@ -228,6 +247,8 @@ private:
 	uint32_t m_frameIndex = 0;
 	bool m_recording = false;
 	uint64_t m_submittedFrames = 0;
+	uint64_t m_completedSerial = 0;
+	uint32_t m_timestampValidBits = 0;
 };
 
 const char* VkResultToString( VkResult result );

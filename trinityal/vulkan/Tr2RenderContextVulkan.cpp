@@ -71,6 +71,7 @@ Tr2RenderContextAL::Tr2RenderContextAL() :
 	m_isValid( false ),
 	m_viewport( 0, 0 ),
 	m_frameNumber( 0 ),
+	m_renderedFrameNumber( 0 ),
 	m_indexType( VK_INDEX_TYPE_UINT16 ),
 	m_topology( TOP_TRIANGLES ),
 	m_separateAlphaBlend( false ),
@@ -176,6 +177,8 @@ void Tr2RenderContextAL::Destroy()
 		}
 	}
 	m_defaultSampler = VK_NULL_HANDLE;
+	m_framesInFlight.clear();
+	m_renderedFrameNumber = m_frameNumber;
 	m_rendering = false;
 	m_boundPipeline = VK_NULL_HANDLE;
 	m_commandBufferSerial = ~0ull;
@@ -1116,6 +1119,7 @@ ALResult Tr2RenderContextAL::Present()
 		return E_FAIL;
 	}
 	++m_frameNumber;
+	m_framesInFlight.emplace_back( m_frameNumber, m_device->GetSubmittedFrameCount() );
 	return S_OK;
 }
 
@@ -1481,7 +1485,16 @@ void Tr2RenderContextAL::MarkFrameEvent( Tr2RenderContextEnum::FrameEvent frameE
 }
 uint64_t Tr2RenderContextAL::GetRenderedFrameNumber() const
 {
-	return m_frameNumber;
+	if( m_device && !m_framesInFlight.empty() )
+	{
+		const uint64_t completed = m_device->GetCompletedSerial();
+		while( !m_framesInFlight.empty() && m_framesInFlight.front().second <= completed )
+		{
+			m_renderedFrameNumber = m_framesInFlight.front().first;
+			m_framesInFlight.pop_front();
+		}
+	}
+	return m_renderedFrameNumber;
 }
 
 

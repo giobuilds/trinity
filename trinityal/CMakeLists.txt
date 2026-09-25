@@ -362,6 +362,8 @@ set(_SOURCES
     vulkan/VulkanFormats.h
     vulkan/VulkanIncludes.h
     vulkan/VulkanPipelineState.h
+    vulkan/VulkanQuery.cpp
+    vulkan/VulkanQuery.h
     vulkan/VulkanSpirv.cpp
     vulkan/VulkanSpirv.h
     vulkan/VulkanStates.cpp

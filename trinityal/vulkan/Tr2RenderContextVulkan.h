@@ -22,6 +22,7 @@
 #include "VulkanIncludes.h"
 #include "VulkanPipelineState.h"
 
+#include <deque>
 #include <unordered_map>
 
 namespace TrinityALImpl
@@ -322,7 +323,11 @@ private:
 	Tr2Viewport m_viewport;
 	TrackableStdStack<RenderTargetBinding> m_stackRT[MAX_RENDER_TARGET];
 	TrackableStdStack<Tr2TextureAL> m_stackDS;
-	uint64_t m_frameNumber;
+	uint64_t m_frameNumber; // frames presented
+	// Presented frames still on the GPU, with the serial of their last submission; the rendered frame number advances as
+	// they complete.
+	mutable std::deque<std::pair<uint64_t, uint64_t>> m_framesInFlight;
+	mutable uint64_t m_renderedFrameNumber;
 	std::shared_ptr<TrinityALImpl::VulkanDevice> m_device;
 
 	// Draw state

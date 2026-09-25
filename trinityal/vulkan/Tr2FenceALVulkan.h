@@ -6,8 +6,15 @@
 
 #include "../include/Tr2FenceAL.h"
 
+#include <memory>
+#include <string>
+
 namespace TrinityALImpl
 {
+class VulkanDevice;
+
+// A point in the command stream: PutFence takes the serial of the submission being recorded; it is reached when the
+// GPU has completed that submission (see VulkanDevice::GetRecordingSerial).
 class Tr2FenceAL : public Tr2DeviceResourceAL<Tr2FenceAL>
 {
 public:
@@ -32,8 +39,9 @@ public:
 	ALResult SetName( const char* name );
 
 private:
-	bool m_isValid;
-	bool m_hasFence;
+	std::shared_ptr<VulkanDevice> m_device;
+	uint64_t m_serial = 0; // 0: not put
+	std::string m_name;
 };
 }
 

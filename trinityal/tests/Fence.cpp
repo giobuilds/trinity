@@ -80,3 +80,39 @@ TEST_F( Fence, FenceHasMemoryClass )
 	auto memoryClass = fence.GetMemoryClass();
 	EXPECT_TRUE( memoryClass == AL_MEMORY_VIDEO || memoryClass == AL_MEMORY_MANAGED );
 }
+
+#if TRINITY_PLATFORM == TRINITY_VULKAN
+TEST_F( Fence, FenceIsReachedOnceTheGpuHasFinished )
+{
+	ENSURE_GPU_OR_SKIP
+	Tr2FenceAL fence;
+	ASSERT_HRESULT_SUCCEEDED( fence.Create( *renderContext ) );
+	bool reached = true;
+	EXPECT_HRESULT_FAILED( fence.IsReached( reached, *renderContext ) ); // not put yet
+
+	ASSERT_HRESULT_SUCCEEDED( renderContext->Clear( Tr2RenderContextEnum::CLEARFLAGS_TARGET, 0xff000000, 1.0f ) );
+	ASSERT_HRESULT_SUCCEEDED( fence.PutFence( *renderContext ) );
+	ASSERT_HRESULT_SUCCEEDED( fence.IsReached( reached, *renderContext ) );
+	EXPECT_FALSE( reached ); // the clear is recorded but not submitted
+
+	ASSERT_HRESULT_SUCCEEDED( fence.Wait( *renderContext ) );
+	ASSERT_HRESULT_SUCCEEDED( fence.IsReached( reached, *renderContext ) );
+	EXPECT_TRUE( reached );
+}
+
+TEST_F( Fence, RenderedFrameNumberFollowsTheGpu )
+{
+	ENSURE_GPU_OR_SKIP
+	ASSERT_HRESULT_SUCCEEDED( renderContext->Clear( Tr2RenderContextEnum::CLEARFLAGS_TARGET, 0xff000000, 1.0f ) );
+	const uint64_t frame = renderContext->GetRecordingFrameNumber();
+	ASSERT_HRESULT_SUCCEEDED( renderContext->Present() );
+	EXPECT_EQ( frame + 1, renderContext->GetRecordingFrameNumber() );
+
+	Tr2FenceAL fence;
+	ASSERT_HRESULT_SUCCEEDED( fence.Create( *renderContext ) );
+	ASSERT_HRESULT_SUCCEEDED( renderContext->Clear( Tr2RenderContextEnum::CLEARFLAGS_TARGET, 0xff000000, 1.0f ) );
+	ASSERT_HRESULT_SUCCEEDED( fence.PutFence( *renderContext ) );
+	ASSERT_HRESULT_SUCCEEDED( fence.Wait( *renderContext ) );
+	EXPECT_EQ( frame, renderContext->GetRenderedFrameNumber() );
+}
+#endif

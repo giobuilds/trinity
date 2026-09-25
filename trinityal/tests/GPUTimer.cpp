@@ -58,3 +58,31 @@ TEST_F( GpuTimer, ValidAfterStopping )
 }
 
 #endif
+
+#if TRINITY_PLATFORM == TRINITY_VULKAN
+TEST_F( GpuTimer, MeasuresElapsedTime )
+{
+	ENSURE_GPU_OR_SKIP
+	Tr2GpuTimerAL timer;
+	ASSERT_HRESULT_SUCCEEDED( timer.Create( *renderContext ) );
+	EXPECT_EQ( -1.0f, timer.GetTime( *renderContext ) ); // nothing measured yet
+	ASSERT_TRUE( timer.Begin( *renderContext ) );
+	EXPECT_FALSE( timer.Begin( *renderContext ) ); // one interval at a time
+	for( int i = 0; i < 16; ++i )
+	{
+		ASSERT_HRESULT_SUCCEEDED( renderContext->Clear( Tr2RenderContextEnum::CLEARFLAGS_TARGET, 0xff000000 | i, 1.0f ) );
+	}
+	timer.End( *renderContext );
+
+	Tr2FenceAL fence;
+	ASSERT_HRESULT_SUCCEEDED( fence.Create( *renderContext ) );
+	ASSERT_HRESULT_SUCCEEDED( fence.PutFence( *renderContext ) );
+	ASSERT_HRESULT_SUCCEEDED( fence.Wait( *renderContext ) );
+
+	const float seconds = timer.GetTime( *renderContext );
+	EXPECT_GE( seconds, 0.0f );
+	EXPECT_LT( seconds, 1.0f );
+	EXPECT_TRUE( timer.Begin( *renderContext ) ); // read, so it can measure again
+	timer.End( *renderContext );
+}
+#endif
