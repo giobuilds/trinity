@@ -523,9 +523,282 @@ void PlatformKeyChanged( PlatformKey, bool )
 
 }
 
+#elif defined( __linux__ ) && TRINITY_PLATFORM == TRINITY_VULKAN
+
+// SDL3 (see UI/Tr2MainWindow_SDL.cpp): platform keys are SDL scancodes, which name physical key positions (USB HID
+// usages); app keys are Win32 virtual-key codes, mapped by position on a US layout as the macOS table does. Key names
+// come from SDL for the current layout; pressed state is SDL's keyboard state.
+#include <SDL3/SDL.h>
+
+namespace
+{
+
+struct KeyMapping
+{
+	SDL_Scancode scancode;
+	KeyboardHelpers::AppKey vk;
+};
+
+const KeyMapping s_keyMap[] = {
+	{ SDL_SCANCODE_A, VK_A },
+	{ SDL_SCANCODE_B, VK_B },
+	{ SDL_SCANCODE_C, VK_C },
+	{ SDL_SCANCODE_D, VK_D },
+	{ SDL_SCANCODE_E, VK_E },
+	{ SDL_SCANCODE_F, VK_F },
+	{ SDL_SCANCODE_G, VK_G },
+	{ SDL_SCANCODE_H, VK_H },
+	{ SDL_SCANCODE_I, VK_I },
+	{ SDL_SCANCODE_J, VK_J },
+	{ SDL_SCANCODE_K, VK_K },
+	{ SDL_SCANCODE_L, VK_L },
+	{ SDL_SCANCODE_M, VK_M },
+	{ SDL_SCANCODE_N, VK_N },
+	{ SDL_SCANCODE_O, VK_O },
+	{ SDL_SCANCODE_P, VK_P },
+	{ SDL_SCANCODE_Q, VK_Q },
+	{ SDL_SCANCODE_R, VK_R },
+	{ SDL_SCANCODE_S, VK_S },
+	{ SDL_SCANCODE_T, VK_T },
+	{ SDL_SCANCODE_U, VK_U },
+	{ SDL_SCANCODE_V, VK_V },
+	{ SDL_SCANCODE_W, VK_W },
+	{ SDL_SCANCODE_X, VK_X },
+	{ SDL_SCANCODE_Y, VK_Y },
+	{ SDL_SCANCODE_Z, VK_Z },
+	{ SDL_SCANCODE_1, VK_1 },
+	{ SDL_SCANCODE_2, VK_2 },
+	{ SDL_SCANCODE_3, VK_3 },
+	{ SDL_SCANCODE_4, VK_4 },
+	{ SDL_SCANCODE_5, VK_5 },
+	{ SDL_SCANCODE_6, VK_6 },
+	{ SDL_SCANCODE_7, VK_7 },
+	{ SDL_SCANCODE_8, VK_8 },
+	{ SDL_SCANCODE_9, VK_9 },
+	{ SDL_SCANCODE_0, VK_0 },
+	{ SDL_SCANCODE_RETURN, VK_RETURN },
+	{ SDL_SCANCODE_ESCAPE, VK_ESCAPE },
+	{ SDL_SCANCODE_BACKSPACE, VK_BACK },
+	{ SDL_SCANCODE_TAB, VK_TAB },
+	{ SDL_SCANCODE_SPACE, VK_SPACE },
+	{ SDL_SCANCODE_MINUS, VK_OEM_MINUS },
+	{ SDL_SCANCODE_EQUALS, VK_OEM_PLUS },
+	{ SDL_SCANCODE_LEFTBRACKET, VK_OEM_4 },
+	{ SDL_SCANCODE_RIGHTBRACKET, VK_OEM_6 },
+	{ SDL_SCANCODE_BACKSLASH, VK_OEM_5 },
+	{ SDL_SCANCODE_NONUSHASH, VK_OEM_5 },
+	{ SDL_SCANCODE_SEMICOLON, VK_OEM_1 },
+	{ SDL_SCANCODE_APOSTROPHE, VK_OEM_7 },
+	{ SDL_SCANCODE_GRAVE, VK_OEM_3 },
+	{ SDL_SCANCODE_COMMA, VK_OEM_COMMA },
+	{ SDL_SCANCODE_PERIOD, VK_OEM_PERIOD },
+	{ SDL_SCANCODE_SLASH, VK_OEM_2 },
+	{ SDL_SCANCODE_NONUSBACKSLASH, VK_OEM_102 },
+	{ SDL_SCANCODE_CAPSLOCK, VK_CAPITAL },
+	{ SDL_SCANCODE_F1, VK_F1 },
+	{ SDL_SCANCODE_F2, VK_F2 },
+	{ SDL_SCANCODE_F3, VK_F3 },
+	{ SDL_SCANCODE_F4, VK_F4 },
+	{ SDL_SCANCODE_F5, VK_F5 },
+	{ SDL_SCANCODE_F6, VK_F6 },
+	{ SDL_SCANCODE_F7, VK_F7 },
+	{ SDL_SCANCODE_F8, VK_F8 },
+	{ SDL_SCANCODE_F9, VK_F9 },
+	{ SDL_SCANCODE_F10, VK_F10 },
+	{ SDL_SCANCODE_F11, VK_F11 },
+	{ SDL_SCANCODE_F12, VK_F12 },
+	{ SDL_SCANCODE_F13, VK_F13 },
+	{ SDL_SCANCODE_F14, VK_F14 },
+	{ SDL_SCANCODE_F15, VK_F15 },
+	{ SDL_SCANCODE_F16, VK_F16 },
+	{ SDL_SCANCODE_F17, VK_F17 },
+	{ SDL_SCANCODE_F18, VK_F18 },
+	{ SDL_SCANCODE_F19, VK_F19 },
+	{ SDL_SCANCODE_F20, VK_F20 },
+	{ SDL_SCANCODE_F21, VK_F21 },
+	{ SDL_SCANCODE_F22, VK_F22 },
+	{ SDL_SCANCODE_F23, VK_F23 },
+	{ SDL_SCANCODE_F24, VK_F24 },
+	{ SDL_SCANCODE_PRINTSCREEN, VK_SNAPSHOT },
+	{ SDL_SCANCODE_SCROLLLOCK, VK_SCROLL },
+	{ SDL_SCANCODE_PAUSE, VK_PAUSE },
+	{ SDL_SCANCODE_INSERT, VK_INSERT },
+	{ SDL_SCANCODE_HOME, VK_HOME },
+	{ SDL_SCANCODE_PAGEUP, VK_PRIOR },
+	{ SDL_SCANCODE_DELETE, VK_DELETE },
+	{ SDL_SCANCODE_END, VK_END },
+	{ SDL_SCANCODE_PAGEDOWN, VK_NEXT },
+	{ SDL_SCANCODE_RIGHT, VK_RIGHT },
+	{ SDL_SCANCODE_LEFT, VK_LEFT },
+	{ SDL_SCANCODE_DOWN, VK_DOWN },
+	{ SDL_SCANCODE_UP, VK_UP },
+	{ SDL_SCANCODE_NUMLOCKCLEAR, VK_NUMLOCK },
+	{ SDL_SCANCODE_KP_DIVIDE, VK_DIVIDE },
+	{ SDL_SCANCODE_KP_MULTIPLY, VK_MULTIPLY },
+	{ SDL_SCANCODE_KP_MINUS, VK_SUBTRACT },
+	{ SDL_SCANCODE_KP_PLUS, VK_ADD },
+	{ SDL_SCANCODE_KP_ENTER, VK_RETURN },
+	{ SDL_SCANCODE_KP_1, VK_NUMPAD1 },
+	{ SDL_SCANCODE_KP_2, VK_NUMPAD2 },
+	{ SDL_SCANCODE_KP_3, VK_NUMPAD3 },
+	{ SDL_SCANCODE_KP_4, VK_NUMPAD4 },
+	{ SDL_SCANCODE_KP_5, VK_NUMPAD5 },
+	{ SDL_SCANCODE_KP_6, VK_NUMPAD6 },
+	{ SDL_SCANCODE_KP_7, VK_NUMPAD7 },
+	{ SDL_SCANCODE_KP_8, VK_NUMPAD8 },
+	{ SDL_SCANCODE_KP_9, VK_NUMPAD9 },
+	{ SDL_SCANCODE_KP_0, VK_NUMPAD0 },
+	{ SDL_SCANCODE_KP_PERIOD, VK_DECIMAL },
+	{ SDL_SCANCODE_KP_COMMA, VK_SEPARATOR },
+	{ SDL_SCANCODE_APPLICATION, VK_APPS },
+	{ SDL_SCANCODE_HELP, VK_HELP },
+	{ SDL_SCANCODE_SLEEP, VK_SLEEP },
+	{ SDL_SCANCODE_MUTE, VK_VOLUME_MUTE },
+	{ SDL_SCANCODE_VOLUMEUP, VK_VOLUME_UP },
+	{ SDL_SCANCODE_VOLUMEDOWN, VK_VOLUME_DOWN },
+	{ SDL_SCANCODE_MEDIA_NEXT_TRACK, VK_MEDIA_NEXT_TRACK },
+	{ SDL_SCANCODE_MEDIA_PREVIOUS_TRACK, VK_MEDIA_PREV_TRACK },
+	{ SDL_SCANCODE_MEDIA_STOP, VK_MEDIA_STOP },
+	{ SDL_SCANCODE_MEDIA_PLAY_PAUSE, VK_MEDIA_PLAY_PAUSE },
+	{ SDL_SCANCODE_AC_BACK, VK_BROWSER_BACK },
+	{ SDL_SCANCODE_AC_FORWARD, VK_BROWSER_FORWARD },
+	{ SDL_SCANCODE_AC_REFRESH, VK_BROWSER_REFRESH },
+	{ SDL_SCANCODE_AC_STOP, VK_BROWSER_STOP },
+	{ SDL_SCANCODE_AC_SEARCH, VK_BROWSER_SEARCH },
+	{ SDL_SCANCODE_AC_BOOKMARKS, VK_BROWSER_FAVORITES },
+	{ SDL_SCANCODE_AC_HOME, VK_BROWSER_HOME },
+	{ SDL_SCANCODE_INTERNATIONAL1, VK_OEM_102 },
+	{ SDL_SCANCODE_LANG1, VK_HANGUL },
+	{ SDL_SCANCODE_LANG2, VK_HANJA },
+	{ SDL_SCANCODE_LCTRL, VK_LCONTROL },
+	{ SDL_SCANCODE_LSHIFT, VK_LSHIFT },
+	{ SDL_SCANCODE_LALT, VK_LMENU },
+	{ SDL_SCANCODE_LGUI, VK_LWIN },
+	{ SDL_SCANCODE_RCTRL, VK_RCONTROL },
+	{ SDL_SCANCODE_RSHIFT, VK_RSHIFT },
+	{ SDL_SCANCODE_RALT, VK_RMENU },
+	{ SDL_SCANCODE_RGUI, VK_RWIN },
+};
+
+// Scancode -> VK and back, built once. VK -> scancode keeps the first (main-block) key for duplicates such as Return.
+struct KeyTables
+{
+	KeyboardHelpers::AppKey toApp[SDL_SCANCODE_COUNT] = {};
+	SDL_Scancode toPlatform[256] = {};
+	KeyTables()
+	{
+		for( auto& mapping : s_keyMap )
+		{
+			toApp[mapping.scancode] = mapping.vk;
+			if( mapping.vk < 256 && toPlatform[mapping.vk] == SDL_SCANCODE_UNKNOWN )
+			{
+				toPlatform[mapping.vk] = mapping.scancode;
+			}
+		}
+	}
+};
+
+const KeyTables& GetKeyTables()
+{
+	static const KeyTables tables;
+	return tables;
+}
+
+bool IsScancodePressed( SDL_Scancode scancode )
+{
+	int count = 0;
+	const bool* state = SDL_GetKeyboardState( &count );
+	return state && int( scancode ) < count && state[scancode];
+}
+
+}
+
+namespace KeyboardHelpers
+{
+
+const AppKey INVALID_APP_KEY = 0;
+const AppKey INVALID_PLATFORM_KEY = 0;
+
+PlatformKey AppKeyToPlatformKey( AppKey appCode )
+{
+	return appCode < 256 ? PlatformKey( GetKeyTables().toPlatform[appCode] ) : INVALID_PLATFORM_KEY;
+}
+
+AppKey PlatformKeyToAppKey( PlatformKey platformCode )
+{
+	return platformCode < SDL_SCANCODE_COUNT ? GetKeyTables().toApp[platformCode] : INVALID_APP_KEY;
+}
+
+// The key's label on the current keyboard layout (e.g. "Q" is "A" on AZERTY), as Windows' GetKeyNameText gives it.
+std::string GetAppKeyName( AppKey appCode )
+{
+	switch( appCode )
+	{
+	case VK_SHIFT:
+		appCode = VK_LSHIFT;
+		break;
+	case VK_CONTROL:
+		appCode = VK_LCONTROL;
+		break;
+	case VK_MENU:
+		appCode = VK_LMENU;
+		break;
+	}
+	auto scancode = SDL_Scancode( AppKeyToPlatformKey( appCode ) );
+	if( scancode == SDL_SCANCODE_UNKNOWN )
+	{
+		return "";
+	}
+	const char* name = SDL_GetKeyName( SDL_GetKeyFromScancode( scancode, SDL_KMOD_NONE, false ) );
+	if( !name || !*name )
+	{
+		name = SDL_GetScancodeName( scancode );
+	}
+	return name ? name : "";
+}
+
+bool IsAppKeyPressed( AppKey appCode )
+{
+	switch( appCode )
+	{
+	case VK_SHIFT:
+		return IsScancodePressed( SDL_SCANCODE_LSHIFT ) || IsScancodePressed( SDL_SCANCODE_RSHIFT );
+	case VK_CONTROL:
+		return IsScancodePressed( SDL_SCANCODE_LCTRL ) || IsScancodePressed( SDL_SCANCODE_RCTRL );
+	case VK_MENU:
+		return IsScancodePressed( SDL_SCANCODE_LALT ) || IsScancodePressed( SDL_SCANCODE_RALT );
+	case VK_RETURN:
+		return IsScancodePressed( SDL_SCANCODE_RETURN ) || IsScancodePressed( SDL_SCANCODE_KP_ENTER );
+	case VK_LBUTTON:
+		return ( SDL_GetMouseState( nullptr, nullptr ) & SDL_BUTTON_LMASK ) != 0;
+	case VK_RBUTTON:
+		return ( SDL_GetMouseState( nullptr, nullptr ) & SDL_BUTTON_RMASK ) != 0;
+	case VK_MBUTTON:
+		return ( SDL_GetMouseState( nullptr, nullptr ) & SDL_BUTTON_MMASK ) != 0;
+	case VK_XBUTTON1:
+		return ( SDL_GetMouseState( nullptr, nullptr ) & SDL_BUTTON_X1MASK ) != 0;
+	case VK_XBUTTON2:
+		return ( SDL_GetMouseState( nullptr, nullptr ) & SDL_BUTTON_X2MASK ) != 0;
+	default:
+		return IsPlatformKeyPressed( AppKeyToPlatformKey( appCode ) );
+	}
+}
+
+bool IsPlatformKeyPressed( PlatformKey platformCode )
+{
+	return platformCode != INVALID_PLATFORM_KEY && IsScancodePressed( SDL_Scancode( platformCode ) );
+}
+
+void PlatformKeyChanged( PlatformKey, bool )
+{
+	// SDL tracks the keyboard state itself.
+}
+
+}
+
 #else
 
-// No display-server integration yet (X11/Wayland): platform and app keys are the same codes, key names are unknown,
+// Stub renderer (no windows): platform and app keys are the same codes, key names are unknown,
 // and pressed state is tracked from PlatformKeyChanged like the macOS branch does.
 namespace
 {

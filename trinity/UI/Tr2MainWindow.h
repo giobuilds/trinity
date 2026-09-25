@@ -251,6 +251,9 @@ public:
 	void OnKeyboardLayoutChange_MacOS();
 
 	Tr2ImeState_MacOS::Type m_imeState_MacOS = Tr2ImeState_MacOS::DISABLED;
+#elif defined( __linux__ ) && TRINITY_PLATFORM == TRINITY_VULKAN
+	// SDL3 window (Tr2MainWindow_SDL.cpp); m_hwnd holds the SDL_Window*. False once close was allowed.
+	bool OnEvent_SDL( const union SDL_Event& event );
 #elif defined( __linux__ )
 	// Headless: whether the virtual window has been created (see Tr2MainWindow_Linux.cpp).
 	bool m_hasWindow_Linux = false;

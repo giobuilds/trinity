@@ -2,14 +2,14 @@
 
 #include "StdAfx.h"
 
-#ifdef __linux__
+#if defined( __linux__ ) && TRINITY_PLATFORM != TRINITY_VULKAN
 
 #include "Tr2MainWindow.h"
 #include "Tr2MouseCursor.h"
 #include "TriDevice.h"
 #include "Scancodes.h"
 
-// Headless main window. Trinity has no display-server backend on Linux yet (X11/Wayland), so the window is virtual:
+// Headless main window for the stub renderer (the Vulkan build uses SDL3 windows: Tr2MainWindow_SDL.cpp). The window is virtual:
 // it exists once created, its client area is exactly the requested size (there is no frame), it never has focus and
 // it receives no input events. The output handle stays null, which the stub renderer ignores. Display sizes come from
 // the render backend's adapter information.
@@ -189,4 +189,4 @@ Tr2WindowHandle Tr2MainWindow::GetOutputWindow() const
 	return m_hwnd;
 }
 
-#endif // __linux__
+#endif // __linux__ && !TRINITY_VULKAN

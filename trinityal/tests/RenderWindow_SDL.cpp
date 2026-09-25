@@ -2,39 +2,21 @@
 
 #include "StdAfx.h"
 
-// SDL3 windows for the Vulkan backend on Linux. SDL uses the desktop (X11 or Wayland) when there is one and otherwise
-// its offscreen driver, whose Vulkan surfaces are VK_EXT_headless_surface, so the swapchain tests also run in containers
-// and CI. SDL_VIDEO_DRIVER overrides the choice as usual.
+// SDL3 windows for the Vulkan backend on Linux, on the window system the engine uses (TrinityALImpl::
+// InitializeWindowSystem): the desktop when there is one, otherwise SDL's offscreen driver with headless Vulkan
+// surfaces, so the swapchain tests also run in containers and CI.
 #if TRINITY_PLATFORM == TRINITY_VULKAN && defined( __linux__ )
 
 #include "RenderWindow.h"
 #include "WithWindowFixture.h"
 
+#include "VulkanWindowSystem.h"
+
 #include <SDL3/SDL.h>
 
 bool InitTestVideo()
 {
-	static bool initialized = false;
-	static bool attempted = false;
-	if( attempted )
-	{
-		return initialized;
-	}
-	attempted = true;
-	if( !getenv( "SDL_VIDEO_DRIVER" ) && !getenv( "DISPLAY" ) && !getenv( "WAYLAND_DISPLAY" ) )
-	{
-		SDL_SetHint( SDL_HINT_VIDEO_DRIVER, "offscreen" ); // no desktop: skip probing X11/Wayland
-	}
-	initialized = SDL_InitSubSystem( SDL_INIT_VIDEO );
-	if( !initialized && !getenv( "SDL_VIDEO_DRIVER" ) )
-	{
-		SDL_SetHint( SDL_HINT_VIDEO_DRIVER, "offscreen" );
-		initialized = SDL_InitSubSystem( SDL_INIT_VIDEO );
-	}
-	if( !initialized )
-	{
-		fprintf( stderr, "TrinityALTest: no SDL video (%s); swapchain tests run without windows\n", SDL_GetError() );
-	}
+	static const bool initialized = TrinityALImpl::InitializeWindowSystem();
 	return initialized;
 }
 

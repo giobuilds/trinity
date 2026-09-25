@@ -4,6 +4,10 @@
 #include "Tr2MouseCursor.h"
 #include "Tr2HostBitmap.h"
 
+#if defined( __linux__ ) && TRINITY_PLATFORM == TRINITY_VULKAN
+#include <SDL3/SDL.h>
+#endif
+
 // --------------------------------------------------------------------------------------
 // Description:
 //   Tr2MouseCursor default constructor
@@ -15,6 +19,9 @@ Tr2MouseCursor::Tr2MouseCursor( IRoot* lockobj )
 #elif __APPLE__
 	:
 	m_cursor( 0 )
+#elif defined( __linux__ ) && TRINITY_PLATFORM == TRINITY_VULKAN
+	:
+	m_cursor( nullptr )
 #endif
 {
 }
@@ -29,6 +36,11 @@ Tr2MouseCursor::~Tr2MouseCursor()
 	if( m_cursor )
 	{
 		DeleteObject( m_cursor );
+	}
+#elif defined( __linux__ ) && TRINITY_PLATFORM == TRINITY_VULKAN
+	if( m_cursor )
+	{
+		SDL_DestroyCursor( m_cursor );
 	}
 #endif
 }
@@ -58,6 +70,8 @@ bool Tr2MouseCursor::IsValid() const
 	return m_cursor != nullptr;
 #elif __APPLE__
 	return m_cursor != 0;
+#elif defined( __linux__ ) && TRINITY_PLATFORM == TRINITY_VULKAN
+	return m_cursor != nullptr;
 #else
 	return false;
 #endif
@@ -426,6 +440,47 @@ bool Tr2MouseCursor::Create( Tr2HostBitmap* bitmap, int hotspotX, int hotspotY, 
 	}
 
 	return Create_MacOS( reprData, bitmap->GetWidth(), bitmap->GetHeight(), hotspotX, hotspotY );
+#elif defined( __linux__ ) && TRINITY_PLATFORM == TRINITY_VULKAN
+	// B8G8R8A8 bytes are SDL's ARGB8888 on little-endian machines. Larger representations become alternate images,
+	// which SDL picks for high-density displays.
+	if( m_cursor )
+	{
+		SDL_DestroyCursor( m_cursor );
+		m_cursor = nullptr;
+	}
+	std::unique_ptr<char[]> bits( GetUncompressedBitmap( bitmap ) );
+	if( !bits )
+	{
+		return false;
+	}
+	SDL_Surface* surface = SDL_CreateSurfaceFrom( int( bitmap->GetWidth() ), int( bitmap->GetHeight() ), SDL_PIXELFORMAT_ARGB8888, bits.get(), int( bitmap->GetWidth() * 4 ) );
+	if( !surface )
+	{
+		CCP_LOGERR( "Tr2MouseCursor.Create: SDL_CreateSurfaceFrom failed: %s", SDL_GetError() );
+		return false;
+	}
+	std::vector<std::unique_ptr<char[]>> representationBits;
+	for( auto bmp : representations )
+	{
+		auto reprBits = bmp ? GetUncompressedBitmap( bmp ) : nullptr;
+		if( !reprBits )
+		{
+			continue;
+		}
+		if( SDL_Surface* alternate = SDL_CreateSurfaceFrom( int( bmp->GetWidth() ), int( bmp->GetHeight() ), SDL_PIXELFORMAT_ARGB8888, reprBits.get(), int( bmp->GetWidth() * 4 ) ) )
+		{
+			SDL_AddSurfaceAlternateImage( surface, alternate );
+			SDL_DestroySurface( alternate ); // the surface keeps a reference
+			representationBits.push_back( std::move( reprBits ) );
+		}
+	}
+	m_cursor = SDL_CreateColorCursor( surface, hotspotX, hotspotY );
+	SDL_DestroySurface( surface );
+	if( !m_cursor )
+	{
+		CCP_LOGERR( "Tr2MouseCursor.Create: SDL_CreateColorCursor failed: %s", SDL_GetError() );
+	}
+	return m_cursor != nullptr;
 #else
 	return false;
 #endif
@@ -445,5 +500,7 @@ void Tr2MouseCursor::Apply()
 	SetCursor( m_cursor );
 #elif __APPLE__
 	Apply_MacOS();
+#elif defined( __linux__ ) && TRINITY_PLATFORM == TRINITY_VULKAN
+	SDL_SetCursor( m_cursor );
 #endif
 }

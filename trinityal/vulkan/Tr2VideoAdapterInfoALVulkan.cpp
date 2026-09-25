@@ -8,6 +8,12 @@
 #include "Tr2AdapterStructures.h"
 #include "VulkanDevice.h"
 #include "VulkanFormats.h"
+#include "VulkanWindowSystem.h"
+
+#include <SDL3/SDL.h>
+
+#include <algorithm>
+#include <vector>
 
 using namespace Tr2RenderContextEnum;
 using TrinityALImpl::VulkanInstance;
@@ -59,18 +65,79 @@ ALResult Tr2VideoAdapterInfo::GetAdapterInfo( unsigned adapterIndex, Tr2AdapterI
 
 ALResult Tr2VideoAdapterInfo::GetAdapterMonitor( unsigned adapterIndex, void*& monitor )
 {
-	// Monitors come from the window system (SDL3, phase 3); Vulkan adapters are not tied to one.
-	monitor = nullptr;
+	// The SDL_DisplayID of the display the adapter shows on (see GetAdapterDisplay).
+	monitor = reinterpret_cast<void*>( uintptr_t( TrinityALImpl::GetAdapterDisplay( adapterIndex ) ) );
 	return GetAdapter( adapterIndex ) ? S_OK : E_INVALIDARG;
 }
 
-// Display modes need the window system (SDL3 display enumeration, phase 3). Until then every adapter reports one
-// 1920x1080 desktop mode.
+namespace
+{
+
+void FillModeInfo( const SDL_DisplayMode& sdlMode, Tr2DisplayModeInfo& mode )
+{
+	// SDL3 mode sizes are in points; pixel_density converts them to pixels.
+	const float density = sdlMode.pixel_density > 0 ? sdlMode.pixel_density : 1.0f;
+	mode.format = PIXEL_FORMAT_B8G8R8A8_UNORM;
+	mode.width = uint32_t( sdlMode.w * density + 0.5f );
+	mode.height = uint32_t( sdlMode.h * density + 0.5f );
+	mode.refreshRateNumerator = sdlMode.refresh_rate_numerator ? uint32_t( sdlMode.refresh_rate_numerator ) : uint32_t( sdlMode.refresh_rate + 0.5f );
+	mode.refreshRateDenominator = sdlMode.refresh_rate_numerator ? uint32_t( sdlMode.refresh_rate_denominator ) : 1;
+	mode.scaling = DISPLAY_SCALING_UNSPECIFIED;
+	mode.scanlineOrdering = SCANLINE_ORDER_UNSPECIFIED;
+}
+
+// Fullscreen is borderless on the desktop (the back buffer is scaled to the display when presenting), so the modes are
+// the display's desktop mode plus the sizes SDL lists for it, largest first, without duplicate sizes.
+std::vector<Tr2DisplayModeInfo> GetDisplayModes( unsigned adapterIndex )
+{
+	std::vector<Tr2DisplayModeInfo> modes;
+	SDL_DisplayID display = TrinityALImpl::GetAdapterDisplay( adapterIndex );
+	if( !display )
+	{
+		return modes;
+	}
+	if( const SDL_DisplayMode* desktop = SDL_GetDesktopDisplayMode( display ) )
+	{
+		Tr2DisplayModeInfo mode;
+		FillModeInfo( *desktop, mode );
+		modes.push_back( mode );
+	}
+	int count = 0;
+	if( SDL_DisplayMode** list = SDL_GetFullscreenDisplayModes( display, &count ) )
+	{
+		for( int i = 0; i < count; ++i )
+		{
+			Tr2DisplayModeInfo mode;
+			FillModeInfo( *list[i], mode );
+			bool duplicate = false;
+			for( auto& existing : modes )
+			{
+				duplicate |= existing.width == mode.width && existing.height == mode.height;
+			}
+			if( !duplicate )
+			{
+				modes.push_back( mode );
+			}
+		}
+		SDL_free( list );
+	}
+	return modes;
+}
+
+}
+
+// The desktop mode of the adapter's display; 1920x1080 at 60 Hz when there is no window system at all.
 ALResult Tr2VideoAdapterInfo::GetAdapterDisplayMode( unsigned adapterIndex, Tr2DisplayModeInfo& mode )
 {
 	if( !GetAdapter( adapterIndex ) )
 	{
 		return E_INVALIDARG;
+	}
+	SDL_DisplayID display = TrinityALImpl::GetAdapterDisplay( adapterIndex );
+	if( const SDL_DisplayMode* desktop = display ? SDL_GetDesktopDisplayMode( display ) : nullptr )
+	{
+		FillModeInfo( *desktop, mode );
+		return S_OK;
 	}
 	mode.format = PIXEL_FORMAT_B8G8R8A8_UNORM;
 	mode.width = 1920;
@@ -84,17 +151,37 @@ ALResult Tr2VideoAdapterInfo::GetAdapterDisplayMode( unsigned adapterIndex, Tr2D
 
 ALResult Tr2VideoAdapterInfo::GetAdapterModeCount( unsigned adapterIndex, Tr2RenderContextEnum::PixelFormat backBufferFormat, unsigned& count )
 {
-	count = SupportsBackBufferFormat( adapterIndex, backBufferFormat ) ? 1 : 0;
-	return GetAdapter( adapterIndex ) ? S_OK : E_INVALIDARG;
+	count = 0;
+	if( !GetAdapter( adapterIndex ) )
+	{
+		return E_INVALIDARG;
+	}
+	if( SupportsBackBufferFormat( adapterIndex, backBufferFormat ) )
+	{
+		count = std::max( unsigned( GetDisplayModes( adapterIndex ).size() ), 1u );
+	}
+	return S_OK;
 }
 
 ALResult Tr2VideoAdapterInfo::GetAdapterMode( unsigned adapterIndex, Tr2RenderContextEnum::PixelFormat backBufferFormat, unsigned modeIndex, Tr2DisplayModeInfo& mode )
 {
-	if( modeIndex != 0 || !SupportsBackBufferFormat( adapterIndex, backBufferFormat ) )
+	if( !SupportsBackBufferFormat( adapterIndex, backBufferFormat ) )
 	{
 		return E_INVALIDARG;
 	}
-	CR_RETURN_HR( GetAdapterDisplayMode( adapterIndex, mode ) );
+	auto modes = GetDisplayModes( adapterIndex );
+	if( modes.empty() && modeIndex == 0 )
+	{
+		CR_RETURN_HR( GetAdapterDisplayMode( adapterIndex, mode ) );
+	}
+	else if( modeIndex < modes.size() )
+	{
+		mode = modes[modeIndex];
+	}
+	else
+	{
+		return E_INVALIDARG;
+	}
 	mode.format = backBufferFormat;
 	return S_OK;
 }

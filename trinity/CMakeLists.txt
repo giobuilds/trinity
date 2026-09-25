@@ -1395,6 +1395,7 @@ set(_SOURCES
     UI/Tr2MainWindow_MacOS.mm
     UI/Tr2MainWindow_Windows.cpp
     UI/Tr2MainWindow_Linux.cpp
+    UI/Tr2MainWindow_SDL.cpp
     UI/Tr2MouseCursor.cpp
     UI/Tr2MouseCursor.h
     UI/Tr2MouseCursor_Blue.cpp

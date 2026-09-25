@@ -41,6 +41,8 @@ public:
 	void Apply_MacOS();
 
 	id m_cursor; // NSCursor
+#elif defined( __linux__ ) && TRINITY_PLATFORM == TRINITY_VULKAN
+	struct SDL_Cursor* m_cursor;
 #endif
 };
 

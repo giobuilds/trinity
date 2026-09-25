@@ -369,6 +369,8 @@ set(_SOURCES
     vulkan/VulkanStates.cpp
     vulkan/VulkanSwapchain.cpp
     vulkan/VulkanSwapchain.h
+    vulkan/VulkanWindowSystem.cpp
+    vulkan/VulkanWindowSystem.h
     vulkan/VulkanStates.h
     vulkan/upscaling/Tr2UpscalingALVulkan.cpp
     vulkan/upscaling/Tr2UpscalingALVulkan.h
